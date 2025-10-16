@@ -52,3 +52,13 @@ kr_venv
 request_cache
 Pipfile
 .mypy_cache
+
+# FastAPI Microservice #
+########################
+.env
+.env.local
+.env.production
+app/**/*.pyc
+*.svg
+
+CLAUDE.md

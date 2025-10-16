@@ -50,9 +50,17 @@ requests = "^2.32.3"
 simple-ascii-tables = "^1.0.0"
 pytz = "^2024.2"
 typing-extensions = "^4.12.2"
+# FastAPI Microservice Dependencies
+fastapi = "^0.109.0"
+uvicorn = {extras = ["standard"], version = "^0.27.0"}
+pydantic-settings = "^2.1.0"
+python-dotenv = "^1.0.0"
+python-multipart = "^0.0.6"
 
 [tool.poetry.scripts]
 create-docs = "scripts.docs:main"
+dev-server = "scripts.dev:main"
+start-server = "scripts.start:main"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.0"
@@ -62,6 +70,9 @@ pdoc = "^14.5.0"
 types-requests = "^2.28.11.7"
 types-pytz = "^2022.7.0.0"
 poethepoet = "^0.19.0"
+# FastAPI Testing Dependencies
+pytest-asyncio = "^0.21.1"
+httpx = "^0.26.0"
 
 # MyPy Static Analysis
 [tool.mypy]
@@ -86,10 +97,18 @@ line-length = 120
 
 # Task Runner
 [tool.poe.tasks]
+# Testing
 test = "pytest"
 test-no-capture = "pytest --show-capture no  "
 test-nocharts = "pytest --ignore-glob='*chart*.py'"
+
+# Code Quality
 analize = "mypy"
 docs = "pdoc kerykeion -o ./docs"
 format = "black --line-length 120"
 "format:all" = "black kerykeion tests --line-length 120"
+
+# Server Commands (NEW)
+dev = "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+start = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+"start:prod" = "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4"
