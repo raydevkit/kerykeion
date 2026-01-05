@@ -1,0 +1,16 @@
+[phases.setup]
+# Install system packages needed for pyswisseph compilation
+nixPkgs = ["gcc", "gnumake"]
+
+[phases.install]
+# Use pip to install dependencies
+cmds = ["pip install -r requirements.txt"]
+
+[start]
+# Start command
+cmd = "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 2"
+
+[variables]
+# Default environment variables
+PYTHONUNBUFFERED = "1"
+PYTHONDONTWRITEBYTECODE = "1"

@@ -1,0 +1,19 @@
+[build]
+# Use Dockerfile for building
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Number of instances (1 for hobby, can scale later)
+numReplicas = 1
+
+# Health check configuration
+healthcheckPath = "/health"
+healthcheckTimeout = 10
+
+# Restart policy
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+# Resource limits (optional, adjust based on plan)
+# memorySoftLimitMb = 512

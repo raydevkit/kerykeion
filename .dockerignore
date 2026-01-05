@@ -1,0 +1,77 @@
+# =============================================
+# Docker Ignore File
+# =============================================
+# Excludes files from Docker build context
+
+# Git
+.git
+.gitignore
+.github
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.mypy_cache
+.pytest_cache
+*.egg-info
+dist/
+build/
+eggs/
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+kr_venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+tests/
+htmlcov/
+.coverage
+.tox
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Examples
+examples/
+
+# Cache
+.geonames_cache
+.kerykeion
+request_cache
+cache/
+
+# Environment files (security)
+.env
+.env.local
+.env.production
+.env*.local
+
+# Development files
+dev.bat
+dev.py
+start.bat
+CLAUDE.md
+TODO.md
+
+# Release notes and changelog
+release_notes/
+CHANGELOG.md
+
+# Misc
+*.log
+*.svg
+Pipfile

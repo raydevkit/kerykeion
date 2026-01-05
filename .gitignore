@@ -60,5 +60,6 @@ Pipfile
 .env.production
 app/**/*.pyc
 *.svg
+.env.example
 
 CLAUDE.md

@@ -6,8 +6,8 @@ import logging
 
 from app.core.security import verify_api_key
 from app.schemas.requests import SynastryRequest
-from app.schemas.responses import SynastryChartResponse
-from app.services.kerykeion_service import create_astrological_subject, get_synastry_aspects
+from app.schemas.responses import SynastryChartResponse, SynastryDataResponse
+from app.services.kerykeion_service import create_astrological_subject, get_synastry_aspects, subject_to_dict
 from app.services.chart_service import generate_synastry_chart_svg
 
 router = APIRouter()
@@ -52,9 +52,17 @@ async def generate_synastry_chart(
         # Get synastry aspects
         aspects = get_synastry_aspects(subject_one, subject_two)
 
+        # Convert subjects to dict for response
+        subject_one_data = subject_to_dict(subject_one)
+        subject_two_data = subject_to_dict(subject_two)
+
         return SynastryChartResponse(
             svg=svg_content,
-            aspects=aspects
+            data=SynastryDataResponse(
+                subject_one_chart=subject_one_data,
+                subject_two_chart=subject_two_data,
+                aspects=aspects
+            )
         )
 
     except ValueError as e:
