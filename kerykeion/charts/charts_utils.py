@@ -1,43 +1,399 @@
-import math
+"""
+Utility functions for astrological chart generation and SVG drawing.
+
+This module provides:
+- Mathematical utilities for angle and coordinate calculations
+- SVG drawing functions for chart elements (circles, slices, grids, etc.)
+- Element and modality distribution calculations
+- Coordinate conversion and formatting utilities
+
+The module is organized in the following sections:
+1. Constants (zodiac mappings, weights, layout thresholds)
+2. Internal helper functions (weight preparation, distribution calculation)
+3. Mathematical utilities (angles, coordinates, time conversion)
+4. SVG drawing functions (circles, slices, rings, grids, aspects)
+5. Element/modality distribution calculations
+"""
+
 import datetime
-from kerykeion.kr_types import KerykeionException, ChartType
-from typing import Union, Literal
-from kerykeion.kr_types.kr_models import AspectModel, KerykeionPointModel
-from kerykeion.kr_types.settings_models import KerykeionLanguageCelestialPointModel, KerykeionSettingsAspectModel
+import math
+from typing import Literal, Mapping, Optional, Sequence, Union
+
+from kerykeion.schemas import ChartType, KerykeionException
+from kerykeion.schemas.kr_literals import AstrologicalPoint
+from kerykeion.schemas.kr_models import (
+    AspectModel,
+    AstrologicalSubjectModel,
+    CompositeSubjectModel,
+    HouseComparisonModel,
+    KerykeionPointModel,
+    PlanetReturnModel,
+)
+from kerykeion.schemas.settings_models import (
+    KerykeionLanguageCelestialPointModel,
+    KerykeionSettingsCelestialPointModel,
+)
+
+# =============================================================================
+# TYPE ALIASES
+# =============================================================================
+
+ElementQualityDistributionMethod = Literal["pure_count", "weighted"]
+"""Supported strategies for calculating element and modality distributions."""
+
+#: Type alias for numeric values (int or float) used in coordinate calculations.
+Number = Union[int, float]
 
 
-def get_decoded_kerykeion_celestial_point_name(input_planet_name: str, celestial_point_language: KerykeionLanguageCelestialPointModel) -> str:
+# =============================================================================
+# ZODIAC ELEMENT AND QUALITY MAPPINGS
+# =============================================================================
+
+#: Maps zodiac sign index (0-11) to its element (fire, earth, air, water).
+
+_SIGN_TO_ELEMENT: tuple[str, ...] = (
+    "fire",  # Aries
+    "earth",  # Taurus
+    "air",  # Gemini
+    "water",  # Cancer
+    "fire",  # Leo
+    "earth",  # Virgo
+    "air",  # Libra
+    "water",  # Scorpio
+    "fire",  # Sagittarius
+    "earth",  # Capricorn
+    "air",  # Aquarius
+    "water",  # Pisces
+)
+
+_SIGN_TO_QUALITY: tuple[str, ...] = (
+    "cardinal",  # Aries
+    "fixed",  # Taurus
+    "mutable",  # Gemini
+    "cardinal",  # Cancer
+    "fixed",  # Leo
+    "mutable",  # Virgo
+    "cardinal",  # Libra
+    "fixed",  # Scorpio
+    "mutable",  # Sagittarius
+    "cardinal",  # Capricorn
+    "fixed",  # Aquarius
+    "mutable",  # Pisces
+)
+
+#: Tuple of the four elements in standard order.
+_ELEMENT_KEYS: tuple[str, ...] = ("fire", "earth", "air", "water")
+
+#: Tuple of the three qualities/modalities in standard order.
+_QUALITY_KEYS: tuple[str, ...] = ("cardinal", "fixed", "mutable")
+
+
+# =============================================================================
+# WEIGHT CONFIGURATION FOR ELEMENT/QUALITY CALCULATIONS
+# =============================================================================
+
+#: Default fallback weight for points not in the weight lookup.
+_DEFAULT_WEIGHTED_FALLBACK: float = 1.0
+
+#: Default weights for weighted element/quality distribution calculations.
+#: Higher weights indicate more astrological significance.
+DEFAULT_WEIGHTED_POINT_WEIGHTS: dict[str, float] = {
+    # Core luminaries & angles
+    "sun": 2.0,
+    "moon": 2.0,
+    "ascendant": 2.0,
+    "medium_coeli": 1.5,
+    "descendant": 1.5,
+    "imum_coeli": 1.5,
+    "vertex": 0.8,
+    "anti_vertex": 0.8,
+    # Personal planets
+    "mercury": 1.5,
+    "venus": 1.5,
+    "mars": 1.5,
+    # Social planets
+    "jupiter": 1.0,
+    "saturn": 1.0,
+    # Outer/transpersonal
+    "uranus": 0.5,
+    "neptune": 0.5,
+    "pluto": 0.5,
+    # Lunar nodes (mean/true variants)
+    "mean_north_lunar_node": 0.5,
+    "true_north_lunar_node": 0.5,
+    "mean_south_lunar_node": 0.5,
+    "true_south_lunar_node": 0.5,
+    # Chiron, Lilith variants
+    "chiron": 0.6,
+    "mean_lilith": 0.5,
+    "true_lilith": 0.5,
+    # Asteroids / centaurs
+    "ceres": 0.5,
+    "pallas": 0.4,
+    "juno": 0.4,
+    "vesta": 0.4,
+    "pholus": 0.3,
+    # Dwarf planets & TNOs
+    "eris": 0.3,
+    "sedna": 0.3,
+    "haumea": 0.3,
+    "makemake": 0.3,
+    "ixion": 0.3,
+    "orcus": 0.3,
+    "quaoar": 0.3,
+    # Arabic Parts
+    "pars_fortunae": 0.8,
+    "pars_spiritus": 0.7,
+    "pars_amoris": 0.6,
+    "pars_fidei": 0.6,
+    # Fixed stars
+    "regulus": 0.2,
+    "spica": 0.2,
+    "aldebaran": 0.2,
+    "antares": 0.2,
+    "sirius": 0.2,
+    "fomalhaut": 0.2,
+    "algol": 0.2,
+    "betelgeuse": 0.2,
+    "canopus": 0.2,
+    "procyon": 0.2,
+    "arcturus": 0.2,
+    "pollux": 0.2,
+    "deneb": 0.2,
+    "altair": 0.2,
+    "rigel": 0.2,
+    "achernar": 0.2,
+    "capella": 0.2,
+    "vega": 0.2,
+    "alcyone": 0.2,
+    "alphecca": 0.2,
+    "algorab": 0.2,
+    "deneb_algedi": 0.2,
+    # Other
+    "earth": 0.3,
+}
+
+
+# =============================================================================
+# INTERNAL HELPER FUNCTIONS
+# =============================================================================
+
+
+def _prepare_weight_lookup(
+    method: ElementQualityDistributionMethod,
+    custom_weights: Optional[Mapping[str, float]] = None,
+) -> tuple[dict[str, float], float]:
+    """
+    Normalize and merge default weights with any custom overrides.
+
+    Args:
+        method: Calculation strategy to use.
+        custom_weights: Optional mapping of point name (case-insensitive) to weight.
+                        Supports special key "__default__" as fallback weight.
+
+    Returns:
+        A tuple containing the weight lookup dictionary and fallback weight.
+    """
+    normalized_custom = {key.lower(): float(value) for key, value in custom_weights.items()} if custom_weights else {}
+
+    if method == "weighted":
+        weight_lookup: dict[str, float] = dict(DEFAULT_WEIGHTED_POINT_WEIGHTS)
+        fallback_weight = _DEFAULT_WEIGHTED_FALLBACK
+    else:
+        weight_lookup = {}
+        fallback_weight = 1.0
+
+    fallback_weight = normalized_custom.get("__default__", fallback_weight)
+
+    for key, value in normalized_custom.items():
+        if key == "__default__":
+            continue
+        weight_lookup[key] = float(value)
+
+    return weight_lookup, fallback_weight
+
+
+def _calculate_distribution_for_subject(
+    subject: Union[AstrologicalSubjectModel, CompositeSubjectModel, PlanetReturnModel],
+    celestial_points_names: Sequence[str],
+    sign_to_group_map: Sequence[str],
+    group_keys: Sequence[str],
+    weight_lookup: Mapping[str, float],
+    fallback_weight: float,
+) -> dict[str, float]:
+    """
+    Accumulate distribution totals for a single subject.
+
+    Args:
+        subject: Subject providing planetary positions.
+        celestial_points_names: Names of celestial points to consider (lowercase).
+        sign_to_group_map: Mapping from sign index to element/modality key.
+        group_keys: Iterable of expected keys for the resulting totals.
+        weight_lookup: Precomputed mapping of weights per point.
+        fallback_weight: Default weight if point missing in lookup.
+
+    Returns:
+        Dictionary with accumulated totals keyed by element/modality.
+    """
+    totals = {key: 0.0 for key in group_keys}
+
+    for point_name in celestial_points_names:
+        point = subject.get(point_name)
+        if point is None:
+            continue
+
+        sign_index = getattr(point, "sign_num", None)
+        if sign_index is None or not (0 <= sign_index < len(sign_to_group_map)):
+            continue
+
+        group_key = sign_to_group_map[sign_index]
+        weight = weight_lookup.get(point_name, fallback_weight)
+        totals[group_key] += weight
+
+    return totals
+
+
+# =============================================================================
+# CHART LAYOUT CONSTANTS
+# =============================================================================
+
+#: Column threshold indices for planet grid layout.
+_SECOND_COLUMN_THRESHOLD: int = 20
+_THIRD_COLUMN_THRESHOLD: int = 28
+_FOURTH_COLUMN_THRESHOLD: int = 36
+
+#: Chart types that use double-wheel (bi-wheel) layout.
+_DOUBLE_CHART_TYPES: tuple[ChartType, ...] = ("Synastry", "Transit", "DualReturnChart")
+
+#: Width in pixels of each column in the planet grid.
+_GRID_COLUMN_WIDTH: int = 125
+
+
+def _select_planet_grid_thresholds(chart_type: ChartType, num_points: int = 0) -> tuple[int, int, int]:
+    """
+    Return column thresholds for the planet grids based on chart type and point count.
+
+    For double-wheel charts (Synastry, Transit, DualReturnChart), returns very high
+    thresholds to effectively disable multi-column layout.
+
+    For single-wheel charts with many active points (> 20), computes balanced
+    thresholds to distribute points evenly across columns, preventing visual
+    overlap between the planet grid and the chart wheel.
+
+    Args:
+        chart_type: The type of chart being rendered.
+        num_points: Total number of active celestial points. When > 20 in single-wheel
+                   charts, triggers balanced multi-column distribution instead of the
+                   fixed thresholds (20, 28, 36) which produce uneven columns.
+
+    Returns:
+        Tuple of (second, third, fourth) column thresholds.
+    """
+    if chart_type in _DOUBLE_CHART_TYPES:
+        return (
+            1_000_000,  # effectively disable first column
+            1_000_008,  # effectively disable second column
+            1_000_016,  # effectively disable third column
+        )
+
+    # For <= 20 points, all fit in one column (original behavior preserved)
+    if num_points <= _SECOND_COLUMN_THRESHOLD:
+        return _SECOND_COLUMN_THRESHOLD, _THIRD_COLUMN_THRESHOLD, _FOURTH_COLUMN_THRESHOLD
+
+    # Balanced distribution: spread points evenly across columns to prevent
+    # uneven column heights and leftward overflow into the chart wheel area.
+    # Example: 57 points → 3 columns of 19 rows each, instead of 20/8/8/21.
+    max_rows = _SECOND_COLUMN_THRESHOLD  # 20 rows max per column
+    num_columns = min(4, max(1, math.ceil(num_points / max_rows)))
+    rows_per_col = math.ceil(num_points / num_columns)
+
+    return rows_per_col, rows_per_col * 2, rows_per_col * 3
+
+
+def _planet_grid_layout_position(index: int, thresholds: Optional[tuple[int, int, int]] = None) -> tuple[int, int]:
+    """
+    Calculate the grid position for a planet at the given index.
+
+    Args:
+        index: Zero-based index of the planet in the list.
+        thresholds: Optional tuple of (second, third, fourth) column thresholds.
+                   If None, uses default thresholds.
+
+    Returns:
+        Tuple of (horizontal_offset, row_index) for positioning.
+    """
+    second_threshold, third_threshold, fourth_threshold = (
+        thresholds
+        if thresholds is not None
+        else (_SECOND_COLUMN_THRESHOLD, _THIRD_COLUMN_THRESHOLD, _FOURTH_COLUMN_THRESHOLD)
+    )
+
+    if index < second_threshold:
+        column = 0
+        row = index
+    elif index < third_threshold:
+        column = 1
+        row = index - second_threshold
+    elif index < fourth_threshold:
+        column = 2
+        row = index - third_threshold
+    else:
+        column = 3
+        row = index - fourth_threshold
+
+    offset = -(_GRID_COLUMN_WIDTH * column)
+    return offset, row
+
+
+# =============================================================================
+# LANGUAGE AND LOCALIZATION UTILITIES
+# =============================================================================
+
+
+def get_decoded_kerykeion_celestial_point_name(
+    input_planet_name: str, celestial_point_language: KerykeionLanguageCelestialPointModel
+) -> str:
     """
     Decode the given celestial point name based on the provided language model.
 
     Args:
-        input_planet_name (str): The name of the celestial point to decode.
-        celestial_point_language (KerykeionLanguageCelestialPointModel): The language model containing celestial point names.
+        input_planet_name: The internal name of the celestial point to decode.
+        celestial_point_language: The language model containing translated point names.
 
     Returns:
-        str: The decoded celestial point name.
+        The localized celestial point name.
+
+    Raises:
+        KerykeionException: If the point name is not found in the language model.
     """
-
-
-    # Get the language model keys
     language_keys = celestial_point_language.model_dump().keys()
 
-    # Check if the input planet name exists in the language model
     if input_planet_name in language_keys:
         return celestial_point_language[input_planet_name]
     else:
         raise KerykeionException(f"Celestial point {input_planet_name} not found in language model.")
 
 
+# =============================================================================
+# MATHEMATICAL UTILITIES
+# =============================================================================
+
+
 def decHourJoin(inH: int, inM: int, inS: int) -> float:
-    """Join hour, minutes, seconds, timezone integer to hour float.
+    """
+    Convert hours, minutes, and seconds to decimal hours.
 
     Args:
-        - inH (int): hour
-        - inM (int): minutes
-        - inS (int): seconds
+        inH: Hours component.
+        inM: Minutes component.
+        inS: Seconds component.
+
     Returns:
-        float: hour in float format
+        Time as decimal hours.
+
+    Example:
+        >>> decHourJoin(12, 30, 0)
+        12.5
     """
 
     dh = float(inH)
@@ -108,52 +464,60 @@ def offsetToTz(datetime_offset: Union[datetime.timedelta, None]) -> float:
     return output
 
 
+# =============================================================================
+# COORDINATE CALCULATION UTILITIES
+# =============================================================================
+
+
 def sliceToX(slice: Union[int, float], radius: Union[int, float], offset: Union[int, float]) -> float:
-    """Calculates the x-coordinate of a point on a circle based on the slice, radius, and offset.
+    """
+    Calculate the x-coordinate of a point on a circle.
+
+    Used for positioning elements on the zodiac wheel.
 
     Args:
-        - slice (int | float): Represents the
-            slice of the circle to calculate the x-coordinate for.
-            It must be  between 0 and 11 (inclusive).
-        - radius (int | float): Represents the radius of the circle.
-        - offset (int | float): Represents the offset in degrees.
-            It must be between 0 and 360 (inclusive).
+        slice: Slice index (0-11 for zodiac signs, represents 30° segments).
+        radius: Circle radius in pixels.
+        offset: Angular offset in degrees.
 
     Returns:
-        float: The x-coordinate of the point on the circle.
+        X-coordinate on the circle.
 
     Example:
-        >>> import math
         >>> sliceToX(3, 5, 45)
         2.5000000000000018
     """
-
     plus = (math.pi * offset) / 180
     radial = ((math.pi / 6) * slice) + plus
     return radius * (math.cos(radial) + 1)
 
 
 def sliceToY(slice: Union[int, float], r: Union[int, float], offset: Union[int, float]) -> float:
-    """Calculates the y-coordinate of a point on a circle based on the slice, radius, and offset.
+    """
+    Calculate the y-coordinate of a point on a circle.
+
+    Used for positioning elements on the zodiac wheel.
 
     Args:
-        - slice (int | float): Represents the slice of the circle to calculate
-            the y-coordinate for. It must be between 0 and 11 (inclusive).
-        - r (int | float): Represents the radius of the circle.
-        - offset (int | float): Represents the offset in degrees.
-            It must be between 0 and 360 (inclusive).
+        slice: Slice index (0-11 for zodiac signs, represents 30° segments).
+        r: Circle radius in pixels.
+        offset: Angular offset in degrees.
 
     Returns:
-        float: The y-coordinate of the point on the circle.
+        Y-coordinate on the circle.
 
     Example:
-        >>> import math
-        >>> __sliceToY(3, 5, 45)
+        >>> sliceToY(3, 5, 45)
         -4.330127018922194
     """
     plus = (math.pi * offset) / 180
     radial = ((math.pi / 6) * slice) + plus
     return r * ((math.sin(radial) / -1) + 1)
+
+
+# =============================================================================
+# SVG DRAWING FUNCTIONS - ZODIAC SLICES
+# =============================================================================
 
 
 def draw_zodiac_slice(
@@ -165,28 +529,28 @@ def draw_zodiac_slice(
     style: str,
     type: str,
 ) -> str:
-    """Draws a zodiac slice based on the given parameters.
+    """
+    Draw a zodiac sign slice with its symbol on the chart wheel.
+
+    Creates an SVG path element for one of the 12 zodiac slices (30° each)
+    and positions the corresponding zodiac symbol.
 
     Args:
-        - c1 (Union[int, float]): The value of c1.
-        - chart_type (ChartType): The type of chart.
-        - seventh_house_degree_ut (Union[int, float]): The degree of the seventh house.
-        - num (int): The number of the sign. Note: In OpenAstro it did refer to self.zodiac,
-            which is a list of the signs in order, starting with Aries. Eg:
-            {"name": "Ari", "element": "fire"}
-        - r (Union[int, float]): The value of r.
-        - style (str): The CSS inline style.
-        - type (str): The type ?. In OpenAstro, it was the symbol of the sign. Eg: "Ari".
-            self.zodiac[i]["name"]
+        c1: Inner offset for single-wheel charts (ignored for double-wheel).
+        chart_type: Type of chart being rendered.
+        seventh_house_degree_ut: Degree of the 7th house cusp for alignment.
+        num: Sign index (0-11, where 0=Aries).
+        r: Chart radius in pixels.
+        style: CSS inline style for the slice path.
+        type: Sign symbol ID (e.g., "Ari", "Tau", etc.).
 
     Returns:
-        - str: The zodiac slice and symbol as an SVG path.
+        SVG string containing the slice path and symbol elements.
     """
-
     # pie slices
     offset = 360 - seventh_house_degree_ut
     # check transit
-    if chart_type == "Transit" or chart_type == "Synastry":
+    if chart_type == "Transit" or chart_type == "Synastry" or chart_type == "DualReturnChart":
         dropin: Union[int, float] = 0
     else:
         dropin = c1
@@ -195,7 +559,7 @@ def draw_zodiac_slice(
     # symbols
     offset = offset + 15
     # check transit
-    if chart_type == "Transit" or chart_type == "Synastry":
+    if chart_type == "Transit" or chart_type == "Synastry" or chart_type == "DualReturnChart":
         dropin = 54
     else:
         dropin = 18 + c1
@@ -204,20 +568,23 @@ def draw_zodiac_slice(
     return slice + "" + sign
 
 
+# =============================================================================
+# COORDINATE STRING FORMATTING
+# =============================================================================
+
+
 def convert_latitude_coordinate_to_string(coord: Union[int, float], north_label: str, south_label: str) -> str:
-    """Converts a floating point latitude to string with
-    degree, minutes and seconds and the appropriate sign
-    (north or south). Eg. 52.1234567 -> 52°7'25" N
+    """
+    Convert latitude to a formatted string with cardinal direction.
 
     Args:
-        - coord (float | int): latitude in floating or integer format
-        - north_label (str): String label for north
-        - south_label (str): String label for south
-    Returns:
-        - str: latitude in string format with degree, minutes,
-        seconds and sign (N/S)
-    """
+        coord: Latitude in decimal degrees (negative for south).
+        north_label: Label for north (e.g., "N").
+        south_label: Label for south (e.g., "S").
 
+    Returns:
+        Formatted string (e.g., "52°7'25\" N").
+    """
     sign = north_label
     if coord < 0.0:
         sign = south_label
@@ -229,19 +596,17 @@ def convert_latitude_coordinate_to_string(coord: Union[int, float], north_label:
 
 
 def convert_longitude_coordinate_to_string(coord: Union[int, float], east_label: str, west_label: str) -> str:
-    """Converts a floating point longitude to string with
-    degree, minutes and seconds and the appropriate sign
-    (east or west). Eg. 52.1234567 -> 52°7'25" E
+    """
+    Convert longitude to a formatted string with cardinal direction.
 
     Args:
-        - coord (float|int): longitude in floating point format
-        - east_label (str): String label for east
-        - west_label (str): String label for west
-    Returns:
-        str: longitude in string format with degree, minutes,
-            seconds and sign (E/W)
-    """
+        coord: Longitude in decimal degrees (negative for west).
+        east_label: Label for east (e.g., "E").
+        west_label: Label for west (e.g., "W").
 
+    Returns:
+        Formatted string (e.g., "2°59'30\" W").
+    """
     sign = east_label
     if coord < 0.0:
         sign = west_label
@@ -252,12 +617,20 @@ def convert_longitude_coordinate_to_string(coord: Union[int, float], east_label:
     return f"{deg}°{min}'{sec}\" {sign}"
 
 
+# =============================================================================
+# SVG DRAWING FUNCTIONS - ASPECT LINES
+# =============================================================================
+
+
 def draw_aspect_line(
     r: Union[int, float],
     ar: Union[int, float],
     aspect: Union[AspectModel, dict],
     color: str,
     seventh_house_degree_ut: Union[int, float],
+    show_aspect_icon: bool = True,
+    rendered_icon_positions: Optional[list[tuple[float, float, int]]] = None,
+    icon_collision_threshold: float = 16.0,
 ) -> str:
     """Draws svg aspects: ring, aspect ring, degreeA degreeB
 
@@ -267,6 +640,10 @@ def draw_aspect_line(
         - aspect_dict (dict): The aspect dictionary.
         - color (str): The color of the aspect.
         - seventh_house_degree_ut (Union[int, float]): The degree of the seventh house.
+        - show_aspect_icon (bool): Whether to show the aspect icon at the center of the line.
+        - rendered_icon_positions (list | None): List to track rendered icon positions (x, y, aspect_degrees)
+            for collision detection. Only icons of the same aspect type will be checked for collision.
+        - icon_collision_threshold (float): Minimum distance in pixels between icons to avoid overlap.
 
     Returns:
         str: The SVG line element as a string.
@@ -283,11 +660,61 @@ def draw_aspect_line(
     x2 = sliceToX(0, ar, second_offset) + (r - ar)
     y2 = sliceToY(0, ar, second_offset) + (r - ar)
 
+    # Build the aspect icon SVG element if enabled
+    aspect_icon_svg = ""
+    if show_aspect_icon:
+        # Calculate icon position
+        if aspect["aspect_degrees"] == 0:
+            # For conjunctions, place on the same angle but at a slightly larger radius
+            # Use circular mean to handle wrap-around at 0°/360° correctly
+            p1_rad = math.radians(aspect["p1_abs_pos"])
+            p2_rad = math.radians(aspect["p2_abs_pos"])
+            avg_sin = (math.sin(p1_rad) + math.sin(p2_rad)) / 2
+            avg_cos = (math.cos(p1_rad) + math.cos(p2_rad)) / 2
+            avg_pos = math.degrees(math.atan2(avg_sin, avg_cos)) % 360
+
+            offset = (int(seventh_house_degree_ut) / -1) + avg_pos
+            # Place at radius ar + 4 pixels outward
+            icon_radius = ar + 4
+            mid_x = sliceToX(0, icon_radius, offset) + (r - icon_radius)
+            mid_y = sliceToY(0, icon_radius, offset) + (r - icon_radius)
+        else:
+            # For other aspects, use the midpoint of the line
+            mid_x = (x1 + x2) / 2
+            mid_y = (y1 + y2) / 2
+
+        # Check for collision with previously rendered icons OF THE SAME ASPECT TYPE
+        # Different aspect types (e.g., opposition vs quincunx) are allowed to overlap
+        should_render_icon = True
+        current_aspect_degrees = aspect["aspect_degrees"]
+        if rendered_icon_positions is not None:
+            for existing_x, existing_y, existing_aspect_degrees in rendered_icon_positions:
+                # Only check collision for same aspect type
+                if existing_aspect_degrees == current_aspect_degrees:
+                    distance = math.sqrt((mid_x - existing_x) ** 2 + (mid_y - existing_y) ** 2)
+                    if distance < icon_collision_threshold:
+                        should_render_icon = False
+                        break
+
+        if should_render_icon:
+            # The aspect icon symbol ID is "orb" followed by the aspect degrees
+            aspect_symbol_id = f"orb{aspect['aspect_degrees']}"
+            # Center the icon (symbols are roughly 12x12, so offset by -6)
+            icon_offset = 6
+            aspect_icon_svg = (
+                f'<use x="{mid_x - icon_offset}" y="{mid_y - icon_offset}" xlink:href="#{aspect_symbol_id}" />'
+            )
+            # Track this position and aspect type for future collision detection
+            if rendered_icon_positions is not None:
+                rendered_icon_positions.append((mid_x, mid_y, current_aspect_degrees))
+
     return (
-        f'<g kr:node="Aspect" kr:aspectname="{aspect["aspect"]}" kr:to="{aspect["p1_name"]}" kr:tooriginaldegrees="{aspect["p1_abs_pos"]}" kr:from="{aspect["p2_name"]}" kr:fromoriginaldegrees="{aspect["p2_abs_pos"]}">'
+        f'<g kr:node="Aspect" kr:aspectname="{aspect["aspect"]}" kr:to="{aspect["p1_name"]}" kr:tooriginaldegrees="{aspect["p1_abs_pos"]}" kr:from="{aspect["p2_name"]}" kr:fromoriginaldegrees="{aspect["p2_abs_pos"]}" kr:orb="{aspect["orbit"]}" kr:aspectdegrees="{aspect["aspect_degrees"]}" kr:planetsdiff="{aspect["diff"]}" kr:aspectmovement="{aspect["aspect_movement"]}">'
         f'<line class="aspect" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" style="stroke: {color}; stroke-width: 1; stroke-opacity: .9;"/>'
+        f"{aspect_icon_svg}"
         f"</g>"
     )
+
 
 def convert_decimal_to_degree_string(dec: float, format_type: Literal["1", "2", "3"] = "3") -> str:
     """
@@ -320,17 +747,24 @@ def convert_decimal_to_degree_string(dec: float, format_type: Literal["1", "2", 
         return f"{degrees}°{minutes:02d}'{seconds:02d}\""
 
 
+# =============================================================================
+# SVG DRAWING FUNCTIONS - DEGREE RINGS AND MARKERS
+# =============================================================================
+
+
 def draw_transit_ring_degree_steps(r: Union[int, float], seventh_house_degree_ut: Union[int, float]) -> str:
-    """Draws the transit ring degree steps.
+    """
+    Draw degree tick marks around the transit ring.
+
+    Creates 72 tick marks at 5° intervals for visual reference.
 
     Args:
-        - r (Union[int, float]): The value of r.
-        - seventh_house_degree_ut (Union[int, float]): The degree of the seventh house.
+        r: Chart radius in pixels.
+        seventh_house_degree_ut: 7th house position for alignment.
 
     Returns:
-        str: The SVG path of the transit ring degree steps.
+        SVG group element containing the tick marks.
     """
-
     out = '<g id="transitRingDegreeSteps">'
     for i in range(72):
         offset = float(i * 5) - seventh_house_degree_ut
@@ -351,13 +785,16 @@ def draw_transit_ring_degree_steps(r: Union[int, float], seventh_house_degree_ut
 def draw_degree_ring(
     r: Union[int, float], c1: Union[int, float], seventh_house_degree_ut: Union[int, float], stroke_color: str
 ) -> str:
-    """Draws the degree ring.
+    """
+    Draw degree tick marks around the main chart ring.
+
+    Creates 72 tick marks at 5° intervals for visual reference.
 
     Args:
-        - r (Union[int, float]): The value of r.
-        - c1 (Union[int, float]): The value of c1.
-        - seventh_house_degree_ut (Union[int, float]): The degree of the seventh house.
-        - stroke_color (str): The color of the stroke.
+        r: Chart radius in pixels.
+        c1: Inner offset in pixels.
+        seventh_house_degree_ut: 7th house position for alignment.
+        stroke_color: Color for the tick marks.
 
     Returns:
         str: The SVG path of the degree ring.
@@ -380,17 +817,22 @@ def draw_degree_ring(
     return out
 
 
+# =============================================================================
+# SVG DRAWING FUNCTIONS - STRUCTURAL CIRCLES
+# =============================================================================
+
+
 def draw_transit_ring(r: Union[int, float], paper_1_color: str, zodiac_transit_ring_3_color: str) -> str:
     """
-    Draws the transit ring.
+    Draw the transit ring for double-wheel charts.
 
     Args:
-        - r (Union[int, float]): The value of r.
-        - paper_1_color (str): The color of paper 1.
-        - zodiac_transit_ring_3_color (str): The color of the zodiac transit ring
+        r: Chart radius in pixels.
+        paper_1_color: Color for the inner ring fill.
+        zodiac_transit_ring_3_color: Color for the outer ring stroke.
 
     Returns:
-        str: The SVG path of the transit ring.
+        SVG circle elements for the transit ring.
     """
     radius_offset = 18
 
@@ -404,18 +846,21 @@ def draw_first_circle(
     r: Union[int, float], stroke_color: str, chart_type: ChartType, c1: Union[int, float, None] = None
 ) -> str:
     """
-    Draws the first circle.
+    Draw the first (outer) structural circle of the chart.
 
     Args:
-        - r (Union[int, float]): The value of r.
-        - color (str): The color of the circle.
-        - chart_type (ChartType): The type of chart.
-        - c1 (Union[int, float]): The value of c1.
+        r: Chart radius in pixels.
+        stroke_color: Stroke color for the circle.
+        chart_type: Type of chart being rendered.
+        c1: Inner offset (required for single-wheel charts).
 
     Returns:
-        str: The SVG path of the first circle.
+        SVG circle element.
+
+    Raises:
+        KerykeionException: If c1 is None for single-wheel charts.
     """
-    if chart_type == "Synastry" or chart_type == "Transit":
+    if chart_type == "Synastry" or chart_type == "Transit" or chart_type == "DualReturnChart":
         return f'<circle cx="{r}" cy="{r}" r="{r - 36}" style="fill: none; stroke: {stroke_color}; stroke-width: 1px; stroke-opacity:.4;" />'
     else:
         if c1 is None:
@@ -424,6 +869,23 @@ def draw_first_circle(
         return (
             f'<circle cx="{r}" cy="{r}" r="{r - c1}" style="fill: none; stroke: {stroke_color}; stroke-width: 1px; " />'
         )
+
+
+def draw_background_circle(r: Union[int, float], stroke_color: str, fill_color: str) -> str:
+    """
+    Draws the background circle.
+
+    Args:
+        - r (Union[int, float]): The value of r.
+        - stroke_color (str): The color of the stroke.
+        - fill_color (str): The color of the fill.
+
+    Returns:
+        str: The SVG path of the background circle.
+    """
+    return (
+        f'<circle cx="{r}" cy="{r}" r="{r}" style="fill: {fill_color}; stroke: {stroke_color}; stroke-width: 1px;" />'
+    )
 
 
 def draw_second_circle(
@@ -443,7 +905,7 @@ def draw_second_circle(
         str: The SVG path of the second circle.
     """
 
-    if chart_type == "Synastry" or chart_type == "Transit":
+    if chart_type == "Synastry" or chart_type == "Transit" or chart_type == "DualReturnChart":
         return f'<circle cx="{r}" cy="{r}" r="{r - 72}" style="fill: {fill_color}; fill-opacity:.4; stroke: {stroke_color}; stroke-opacity:.4; stroke-width: 1px" />'
 
     else:
@@ -454,11 +916,7 @@ def draw_second_circle(
 
 
 def draw_third_circle(
-    radius: Union[int, float],
-    stroke_color: str,
-    fill_color: str,
-    chart_type: ChartType,
-    c3: Union[int, float]
+    radius: Union[int, float], stroke_color: str, fill_color: str, chart_type: ChartType, c3: Union[int, float]
 ) -> str:
     """
     Draws the third circle in an SVG chart.
@@ -473,7 +931,7 @@ def draw_third_circle(
     Returns:
     - str: The SVG element as a string.
     """
-    if chart_type in {"Synastry", "Transit"}:
+    if chart_type in {"Synastry", "Transit", "DualReturnChart"}:
         # For Synastry and Transit charts, use a fixed radius adjustment of 160
         return f'<circle cx="{radius}" cy="{radius}" r="{radius - 160}" style="fill: {fill_color}; fill-opacity:.8; stroke: {stroke_color}; stroke-width: 1px" />'
 
@@ -482,31 +940,36 @@ def draw_third_circle(
 
 
 def draw_aspect_grid(
-        stroke_color: str,
-        available_planets: list,
-        aspects: list,
-        x_start: int = 380,
-        y_start: int = 468,
-    ) -> str:
+    stroke_color: str,
+    available_planets: list,
+    aspects: list,
+    x_start: int = 510,
+    y_start: int = 468,
+) -> str:
     """
-    Draws the aspect grid for the given planets and aspects.
+    Draw the triangular aspect grid showing relationships between planets.
+
+    This function generates a diagonal grid where each cell represents the
+    aspect relationship between two planets. The grid is triangular because
+    aspects are symmetric (A-B is the same as B-A).
 
     Args:
-        stroke_color (str): The color of the stroke.
-        available_planets (list): List of all planets. Only planets with "is_active" set to True will be used.
-        aspects (list): List of aspects.
-        x_start (int): The x-coordinate starting point.
-        y_start (int): The y-coordinate starting point.
+        stroke_color: CSS color for the grid lines.
+        available_planets: List of planet dictionaries. Only planets with
+            "is_active" set to True will be included in the grid.
+        aspects: List of aspect dictionaries containing p1, p2, and aspect_degrees.
+        x_start: X-coordinate for the bottom-left corner of the grid.
+        y_start: Y-coordinate for the bottom-left corner of the grid.
 
     Returns:
-        str: SVG string representing the aspect grid.
+        SVG string containing the aspect grid rectangles and symbols.
     """
     svg_output = ""
     style = f"stroke:{stroke_color}; stroke-width: 1px; stroke-width: 0.5px; fill:none"
     box_size = 14
 
     # Filter active planets
-    active_planets = [planet for planet in available_planets if planet.is_active]
+    active_planets = [planet for planet in available_planets if planet["is_active"]]
 
     # Reverse the list of active planets for the first iteration
     reversed_planets = active_planets[::-1]
@@ -525,7 +988,7 @@ def draw_aspect_grid(
         y_aspect = y_start + box_size
 
         # Iterate over the remaining planets
-        for planet_b in reversed_planets[index + 1:]:
+        for planet_b in reversed_planets[index + 1 :]:
             # Draw the grid box for the aspect
             svg_output += f'<rect kr:node="AspectsGridRect" x="{x_aspect}" y="{y_aspect}" width="{box_size}" height="{box_size}" style="{style}"/>'
             x_aspect += box_size
@@ -553,26 +1016,36 @@ def draw_houses_cusps_and_text_number(
     chart_type: ChartType,
     second_subject_houses_list: Union[list[KerykeionPointModel], None] = None,
     transit_house_cusp_color: Union[str, None] = None,
+    external_view: bool = False,
 ) -> str:
     """
-    Draws the houses cusps and text numbers for a given chart type.
+    Draw the house cusp lines and house numbers for a chart.
 
-    Parameters:
-    - r: Radius of the chart.
-    - first_subject_houses_list: List of house for the first subject.
-    - standard_house_cusp_color: Default color for house cusps.
-    - first_house_color: Color for the first house cusp.
-    - tenth_house_color: Color for the tenth house cusp.
-    - seventh_house_color: Color for the seventh house cusp.
-    - fourth_house_color: Color for the fourth house cusp.
-    - c1: Offset for the first subject.
-    - c3: Offset for the third subject.
-    - chart_type: Type of the chart (e.g., Transit, Synastry).
-    - second_subject_houses_list: List of house for the second subject (optional).
-    - transit_house_cusp_color: Color for transit house cusps (optional).
+    This function renders the 12 house cusp lines radiating from the center
+    of the chart, with special colors for angular houses (1st, 4th, 7th, 10th).
+    For dual-wheel charts, it also draws the secondary subject's house cusps.
+
+    Args:
+        r: Radius of the chart in pixels.
+        first_subject_houses_list: List of house models for the primary subject.
+        standard_house_cusp_color: Default CSS color for house cusp lines.
+        first_house_color: CSS color for the Ascendant (1st house) cusp.
+        tenth_house_color: CSS color for the Midheaven (10th house) cusp.
+        seventh_house_color: CSS color for the Descendant (7th house) cusp.
+        fourth_house_color: CSS color for the IC (4th house) cusp.
+        c1: Inner radius offset for cusp lines.
+        c3: Outer radius offset for cusp lines.
+        chart_type: Type of chart being rendered.
+        second_subject_houses_list: House models for secondary subject (Transit/Synastry).
+        transit_house_cusp_color: CSS color for transit house cusps.
+        external_view: If True, renders for external/traditional view mode.
 
     Returns:
-    - A string containing the SVG path for the houses cusps and text numbers.
+        SVG string containing house cusp lines and numbered labels.
+
+    Raises:
+        KerykeionException: If chart_type requires second_subject_houses_list
+            or transit_house_cusp_color but they are None.
     """
 
     path = ""
@@ -580,7 +1053,9 @@ def draw_houses_cusps_and_text_number(
 
     for i in range(xr):
         # Determine offsets based on chart type
-        dropin, roff, t_roff = (160, 72, 36) if chart_type in ["Transit", "Synastry"] else (c3, c1, False)
+        dropin, roff, t_roff = (
+            (160, 72, 36) if chart_type in ["Transit", "Synastry", "DualReturnChart"] else (c3, c1, False)
+        )
 
         # Calculate the offset for the current house cusp
         offset = (int(first_subject_houses_list[int(xr / 2)].abs_pos) / -1) + int(first_subject_houses_list[i].abs_pos)
@@ -602,7 +1077,7 @@ def draw_houses_cusps_and_text_number(
             i, standard_house_cusp_color
         )
 
-        if chart_type in ["Transit", "Synastry"]:
+        if chart_type in ["Transit", "Synastry", "DualReturnChart"]:
             if second_subject_houses_list is None or transit_house_cusp_color is None:
                 raise KerykeionException("second_subject_houses_list_ut or transit_house_cusp_color is None")
 
@@ -626,30 +1101,34 @@ def draw_houses_cusps_and_text_number(
 
             # Add the house number text for the second subject
             fill_opacity = "0" if chart_type == "Transit" else ".4"
-            path += f'<g kr:node="HouseNumber">'
+            path += '<g kr:node="HouseNumber">'
             path += f'<text style="fill: var(--kerykeion-chart-color-house-number); fill-opacity: {fill_opacity}; font-size: 14px"><tspan x="{xtext - 3}" y="{ytext + 3}">{i + 1}</tspan></text>'
-            path += f"</g>"
+            path += "</g>"
 
             # Add the house cusp line for the second subject
             stroke_opacity = "0" if chart_type == "Transit" else ".3"
-            path += f'<g kr:node="Cusp">'
+            path += f'<g kr:node="Cusp" kr:absoluteposition="{second_subject_houses_list[i].abs_pos}" kr:signposition="{second_subject_houses_list[i].position}" kr:sing="{second_subject_houses_list[i].sign}" kr:slug="{second_subject_houses_list[i].name}">'
             path += f"<line x1='{t_x1}' y1='{t_y1}' x2='{t_x2}' y2='{t_y2}' style='stroke: {t_linecolor}; stroke-width: 1px; stroke-opacity:{stroke_opacity};'/>"
-            path += f"</g>"
+            path += "</g>"
 
-        # Adjust dropin based on chart type
-        dropin = {"Transit": 84, "Synastry": 84, "ExternalNatal": 100}.get(chart_type, 48)
+        # Adjust dropin based on chart type and external view
+        dropin_map = {"Transit": 84, "Synastry": 84, "DualReturnChart": 84}
+        if external_view:
+            dropin = 100
+        else:
+            dropin = dropin_map.get(chart_type, 48)
         xtext = sliceToX(0, (r - dropin), text_offset) + dropin
         ytext = sliceToY(0, (r - dropin), text_offset) + dropin
 
         # Add the house cusp line for the first subject
-        path += f'<g kr:node="Cusp">'
+        path += f'<g kr:node="Cusp" kr:absoluteposition="{first_subject_houses_list[i].abs_pos}" kr:signposition="{first_subject_houses_list[i].position}" kr:sing="{first_subject_houses_list[i].sign}" kr:slug="{first_subject_houses_list[i].name}">'
         path += f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" style="stroke: {linecolor}; stroke-width: 1px; stroke-dasharray:3,2; stroke-opacity:.4;"/>'
-        path += f"</g>"
+        path += "</g>"
 
         # Add the house number text for the first subject
-        path += f'<g kr:node="HouseNumber">'
+        path += '<g kr:node="HouseNumber">'
         path += f'<text style="fill: var(--kerykeion-chart-color-house-number); fill-opacity: .6; font-size: 14px"><tspan x="{xtext - 3}" y="{ytext + 3}">{i + 1}</tspan></text>'
-        path += f"</g>"
+        path += "</g>"
 
     return path
 
@@ -657,178 +1136,206 @@ def draw_houses_cusps_and_text_number(
 def draw_transit_aspect_list(
     grid_title: str,
     aspects_list: Union[list[AspectModel], list[dict]],
-    celestial_point_language: Union[KerykeionLanguageCelestialPointModel, dict],
-    aspects_settings: Union[KerykeionSettingsAspectModel, dict],
+    celestial_point_language: Union[
+        KerykeionLanguageCelestialPointModel, Mapping[str, Mapping[str, str]], Sequence[Mapping[str, str]]
+    ],
+    aspects_settings: Sequence[Mapping[str, str]],
+    *,
+    aspects_per_column: int = 14,
+    column_width: int = 100,
+    line_height: int = 14,
+    max_columns: int = 6,
+    chart_height: Optional[Union[int, float]] = None,
+    x_offset: int = 565,
+    y_offset: int = 273,
 ) -> str:
     """
-    Generates the SVG output for the aspect transit grid.
+    Generate SVG output for the aspect list panel in transit/synastry charts.
 
-    Parameters:
-    - grid_title: Title of the grid.
-    - aspects_list: List of aspects.
-    - planets_labels: Dictionary containing the planet labels.
-    - aspects_settings: Dictionary containing the aspect settings.
+    This function creates a multi-column list showing all active aspects
+    between planets, with their orbs and aspect symbols. The layout
+    dynamically adjusts columns based on the number of aspects.
+
+    Args:
+        grid_title: Title displayed above the aspect list.
+        aspects_list: List of AspectModel instances or aspect dictionaries.
+        celestial_point_language: Language model for translating planet names.
+        aspects_settings: Dictionary mapping aspect names to their settings.
+        aspects_per_column: Maximum aspects per column before wrapping.
+        column_width: Width of each column in pixels.
+        line_height: Vertical spacing between aspect rows in pixels.
+        max_columns: Maximum columns before using vertical space optimization.
+        chart_height: Total chart height for calculating extended column capacity.
+        x_offset: Horizontal origin of the aspect list group (default 565).
+        y_offset: Vertical origin of the aspect list group (default 273).
 
     Returns:
-    - A string containing the SVG path data for the aspect transit grid.
+        SVG string containing the formatted aspect list with title.
     """
 
     if isinstance(celestial_point_language, dict):
         celestial_point_language = KerykeionLanguageCelestialPointModel(**celestial_point_language)
 
-    if isinstance(aspects_settings, dict):
-        aspects_settings = KerykeionSettingsAspectModel(**aspects_settings)
-
     # If not instance of AspectModel, convert to AspectModel
-    if isinstance(aspects_list[0], dict):
-        aspects_list = [AspectModel(**aspect) for aspect in aspects_list] # type: ignore
+    if aspects_list and isinstance(aspects_list[0], dict):
+        aspects_list = [AspectModel(**aspect) for aspect in aspects_list]  # type: ignore
 
-    line = 0
-    nl = 0
+    # Type narrowing: at this point aspects_list contains AspectModel instances
+    typed_aspects_list: list[AspectModel] = aspects_list  # type: ignore
+
+    translate_x = x_offset
+    translate_y = y_offset
+    title_clearance = 18
+    top_limit_y: float = -translate_y + title_clearance
+    bottom_padding = 40
+    baseline_index = aspects_per_column - 1
+    top_limit_index = math.ceil(top_limit_y / line_height)
+    # `top_limit_index` identifies the highest row index we can reach without
+    # touching the title block. Combined with the baseline index we know how many
+    # rows a "tall" column may contain.
+    max_capacity_by_top = baseline_index - top_limit_index + 1
+
     inner_path = ""
-    for i, aspect in enumerate(aspects_list):
-        # Adjust the vertical position for every 12 aspects
-        if i == 14:
-            nl = 100
-            line = 0
 
-        elif i == 28:
-            nl = 200
-            line = 0
+    full_height_column_index = 10  # 0-based index → 11th column onward
+    if chart_height is not None:
+        available_height = max(chart_height - translate_y - bottom_padding, line_height)
+        allowed_capacity = max(aspects_per_column, int(available_height // line_height))
+        full_height_capacity = max(aspects_per_column, min(allowed_capacity, max_capacity_by_top))
+    else:
+        full_height_capacity = aspects_per_column
 
-        elif i == 42:
-            nl = 300
-            line = 0
+    # Bucket aspects into columns while respecting the capacity of each column.
+    columns: list[list[AspectModel]] = []
+    column_capacities: list[int] = []
 
-        elif i == 56:
-            nl = 400
-            line = 0
+    for aspect in typed_aspects_list:
+        if not columns or len(columns[-1]) >= column_capacities[-1]:
+            new_col_index = len(columns)
+            capacity = aspects_per_column if new_col_index < full_height_column_index else full_height_capacity
+            capacity = max(capacity, 1)
+            columns.append([])
+            column_capacities.append(capacity)
+        columns[-1].append(aspect)
 
-        elif i == 70:
-            nl = 500
-            # When there are more than 60 aspects, the text is moved up
-            if len(aspects_list) > 84:
-                line = -1 * (len(aspects_list) - 84) * 14
-            else:
-                line = 0
+    for col_idx, column in enumerate(columns):
+        capacity = column_capacities[col_idx]
+        horizontal_position = col_idx * column_width
+        column_len = len(column)
 
-        inner_path += f'<g transform="translate({nl},{line})">'
+        for row_idx, aspect in enumerate(column):
+            # Default top-aligned placement
+            vertical_position = row_idx * line_height
 
-        # first planet symbol
-        inner_path += f'<use transform="scale(0.4)" x="0" y="3" xlink:href="#{celestial_point_language[aspects_list[i]["p1"]]["name"]}" />'
+            # Full-height columns reuse the shared baseline so every column
+            # finishes at the same vertical position and grows upwards.
+            if col_idx >= full_height_column_index:
+                vertical_index = baseline_index - (column_len - 1 - row_idx)
+                vertical_position = vertical_index * line_height
+            # Legacy overflow columns (before the 12th) keep the older behaviour:
+            # once we exceed the configured column count, bottom-align the content
+            # so the shorter columns do not look awkwardly padded at the top.
+            elif col_idx >= max_columns and capacity == aspects_per_column:
+                top_offset_lines = max(0, capacity - len(column))
+                vertical_position = (top_offset_lines + row_idx) * line_height
 
-        # aspect symbol
-        # TODO: Remove the "degree" element EVERYWHERE!
-        aspect_name = aspects_list[i]["aspect"]
-        id_value = next((a["degree"] for a in aspects_settings if a["name"] == aspect_name), None) # type: ignore
-        inner_path += f'<use  x="15" y="0" xlink:href="#orb{id_value}" />'
+            inner_path += f'<g transform="translate({horizontal_position},{vertical_position})">'
 
-        # second planet symbol
-        inner_path += f'<g transform="translate(30,0)">'
-        inner_path += f'<use transform="scale(0.4)" x="0" y="3" xlink:href="#{celestial_point_language[aspects_list[i]["p2"]]["name"]}" />'
-        inner_path += f"</g>"
+            # First planet symbol
+            inner_path += f'<use transform="scale(0.4)" x="0" y="3" xlink:href="#{celestial_point_language[aspect["p1"]]["name"]}" />'
 
-        # difference in degrees
-        inner_path += f'<text y="8" x="45" style="fill: var(--kerykeion-chart-color-paper-0); font-size: 10px;">{convert_decimal_to_degree_string(aspects_list[i]["orbit"])}</text>'
-        # line
-        inner_path += f"</g>"
-        line = line + 14
+            # Aspect symbol
+            aspect_name = aspect["aspect"]
+            id_value = next((a["degree"] for a in aspects_settings if a["name"] == aspect_name), None)  # type: ignore
+            inner_path += f'<use x="15" y="0" xlink:href="#orb{id_value}" />'
 
-    out = '<g transform="translate(526,273)">'
-    out += f'<text y="-15" x="0" style="fill: var(--kerykeion-chart-color-paper-0); font-size: 14px;">{grid_title}:</text>'
+            # Second planet symbol
+            inner_path += '<g transform="translate(30,0)">'
+            inner_path += f'<use transform="scale(0.4)" x="0" y="3" xlink:href="#{celestial_point_language[aspect["p2"]]["name"]}" />'
+            inner_path += "</g>"
+
+            # Difference in degrees
+            inner_path += f'<text y="8" x="45" style="fill: var(--kerykeion-chart-color-paper-0); font-size: 10px;">{convert_decimal_to_degree_string(aspect["orbit"])}</text>'
+
+            inner_path += "</g>"
+
+    out = f'<g transform="translate({translate_x},{translate_y})">'
+    out += (
+        f'<text y="-15" x="0" style="fill: var(--kerykeion-chart-color-paper-0); font-size: 14px;">{grid_title}:</text>'
+    )
     out += inner_path
-    out += '</g>'
+    out += "</g>"
 
     return out
 
 
-def calculate_moon_phase_chart_params(
-    degrees_between_sun_and_moon: float,
-    latitude: float
-) -> dict:
+def calculate_moon_phase_chart_params(degrees_between_sun_and_moon: float) -> dict:
     """
-    Calculate the parameters for the moon phase chart.
+    Calculate normalized parameters used by the moon phase icon.
 
-    Parameters:
-    - degrees_between_sun_and_moon (float): The degrees between the sun and the moon.
-    - latitude (float): The latitude for rotation calculation.
+    This function computes the geometric parameters needed to render an accurate
+    lunar phase visualization based on the angular separation between the Sun
+    and Moon.
+
+    Args:
+        degrees_between_sun_and_moon: The elongation (angular separation) between
+            the Sun and Moon in degrees. Values are normalized to 0-360 range.
 
     Returns:
-    - dict: The moon phase chart parameters.
+        Dictionary containing:
+            - phase_angle: Normalized angle (0-360 degrees)
+            - illuminated_fraction: Fraction of moon illuminated (0.0 to 1.0)
+            - shadow_ellipse_rx: Horizontal radius for the shadow ellipse
+
+    Raises:
+        KerykeionException: If degrees_between_sun_and_moon is not a finite number.
     """
-    deg = degrees_between_sun_and_moon
+    if not math.isfinite(degrees_between_sun_and_moon):
+        raise KerykeionException(f"Invalid degree value: {degrees_between_sun_and_moon}")
 
-    # Initialize variables for lunar phase properties
-    circle_center_x = None
-    circle_radius = None
+    phase_angle = degrees_between_sun_and_moon % 360.0
+    radians = math.radians(phase_angle)
+    cosine = math.cos(radians)
+    illuminated_fraction = (1.0 - cosine) / 2.0
 
-    # Determine lunar phase properties based on the degree
-    if deg < 90.0:
-        max_radius = deg
-        if deg > 80.0:
-            max_radius = max_radius * max_radius
-        circle_center_x = 20.0 + (deg / 90.0) * (max_radius + 10.0)
-        circle_radius = 10.0 + (deg / 90.0) * max_radius
-
-    elif deg < 180.0:
-        max_radius = 180.0 - deg
-        if deg < 100.0:
-            max_radius = max_radius * max_radius
-        circle_center_x = 20.0 + ((deg - 90.0) / 90.0 * (max_radius + 10.0)) - (max_radius + 10.0)
-        circle_radius = 10.0 + max_radius - ((deg - 90.0) / 90.0 * max_radius)
-
-    elif deg < 270.0:
-        max_radius = deg - 180.0
-        if deg > 260.0:
-            max_radius = max_radius * max_radius
-        circle_center_x = 20.0 + ((deg - 180.0) / 90.0 * (max_radius + 10.0))
-        circle_radius = 10.0 + ((deg - 180.0) / 90.0 * max_radius)
-
-    elif deg < 361.0:
-        max_radius = 360.0 - deg
-        if deg < 280.0:
-            max_radius = max_radius * max_radius
-        circle_center_x = 20.0 + ((deg - 270.0) / 90.0 * (max_radius + 10.0)) - (max_radius + 10.0)
-        circle_radius = 10.0 + max_radius - ((deg - 270.0) / 90.0 * max_radius)
-
-    else:
-        raise KerykeionException(f"Invalid degree value: {deg}")
-
-
-    # Calculate rotation based on latitude
-    lunar_phase_rotate = -90.0 - latitude
+    # Guard against floating point spillover outside [0, 1].
+    illuminated_fraction = max(0.0, min(1.0, illuminated_fraction))
 
     return {
-        "circle_center_x": circle_center_x,
-        "circle_radius": circle_radius,
-        "lunar_phase_rotate": lunar_phase_rotate,
+        "phase_angle": phase_angle,
+        "illuminated_fraction": illuminated_fraction,
+        "shadow_ellipse_rx": 10.0 * cosine,
     }
 
-def draw_house_grid(
-        main_subject_houses_list: list[KerykeionPointModel],
-        chart_type: ChartType,
-        secondary_subject_houses_list: Union[list[KerykeionPointModel], None] = None,
-        text_color: str = "#000000",
-        house_cusp_generale_name_label: str = "Cusp",
-    ) -> str:
+
+# =============================================================================
+# SVG DRAWING FUNCTIONS - HOUSE GRIDS
+# Note: draw_main_house_grid and draw_secondary_house_grid are kept separate
+# for API compatibility, though they share the same implementation logic.
+# =============================================================================
+
+
+def draw_main_house_grid(
+    main_subject_houses_list: list[KerykeionPointModel],
+    house_cusp_generale_name_label: str = "Cusp",
+    text_color: str = "#000000",
+    x_position: int = 750,
+    y_position: int = 30,
+) -> str:
     """
-    Generate SVG code for a grid of astrological houses.
+    Generate SVG code for a grid of astrological houses for the main subject.
 
     Parameters:
-    - main_houses (list[KerykeionPointModel]): List of houses for the main subject.
-    - chart_type (ChartType): Type of the chart (e.g., Synastry, Transit).
-    - secondary_houses (list[KerykeionPointModel], optional): List of houses for the secondary subject.
-    - text_color (str): Color of the text.
-    - cusp_label (str): Label for the house cusp.
+    - main_subject_houses_list (list[KerykeionPointModel]): List of houses for the main subject.
+    - house_cusp_generale_name_label (str): Label for the house cusp. Defaults to "Cusp".
+    - text_color (str): Color of the text. Defaults to "#000000".
+    - x_position (int): X position for the grid. Defaults to 720.
+    - y_position (int): Y position for the grid. Defaults to 30.
 
     Returns:
     - str: The SVG code for the grid of houses.
     """
-
-    if chart_type in ["Synastry", "Transit"] and secondary_subject_houses_list is None:
-        raise KerykeionException("secondary_houses is None")
-
-    svg_output = '<g transform="translate(650,-20)">'
+    svg_output = f'<g transform="translate({x_position},{y_position})">'
 
     line_increment = 10
     for i, house in enumerate(main_subject_houses_list):
@@ -838,79 +1345,119 @@ def draw_house_grid(
             f'<text text-anchor="end" x="40" style="fill:{text_color}; font-size: 10px;">{house_cusp_generale_name_label} {cusp_number}:</text>'
             f'<g transform="translate(40,-8)"><use transform="scale(0.3)" xlink:href="#{house["sign"]}" /></g>'
             f'<text x="53" style="fill:{text_color}; font-size: 10px;"> {convert_decimal_to_degree_string(house["position"])}</text>'
-            f'</g>'
+            f"</g>"
         )
         line_increment += 14
 
     svg_output += "</g>"
-
-    if chart_type == "Synastry":
-        svg_output += '<!-- Synastry Houses -->'
-        svg_output += '<g transform="translate(910, -20)">'
-        line_increment = 10
-
-        for i, house in enumerate(secondary_subject_houses_list): # type: ignore
-            cusp_number = f"&#160;&#160;{i + 1}" if i < 9 else str(i + 1)
-            svg_output += (
-                f'<g transform="translate(0,{line_increment})">'
-                f'<text text-anchor="end" x="40" style="fill:{text_color}; font-size: 10px;">{house_cusp_generale_name_label} {cusp_number}:</text>'
-                f'<g transform="translate(40,-8)"><use transform="scale(0.3)" xlink:href="#{house["sign"]}" /></g>'
-                f'<text x="53" style="fill:{text_color}; font-size: 10px;"> {convert_decimal_to_degree_string(house["position"])}</text>'
-                f'</g>'
-            )
-            line_increment += 14
-
-        svg_output += "</g>"
-
     return svg_output
 
 
-def draw_planet_grid(
-        planets_and_houses_grid_title: str,
-        subject_name: str,
-        available_kerykeion_celestial_points: list[KerykeionPointModel],
-        chart_type: ChartType,
-        celestial_point_language: KerykeionLanguageCelestialPointModel,
-        second_subject_name: Union[str, None] = None,
-        second_subject_available_kerykeion_celestial_points: Union[list[KerykeionPointModel], None] = None,
-        text_color: str = "#000000",
-    ) -> str:
+def draw_secondary_house_grid(
+    secondary_subject_houses_list: list[KerykeionPointModel],
+    house_cusp_generale_name_label: str = "Cusp",
+    text_color: str = "#000000",
+    x_position: int = 1015,
+    y_position: int = 30,
+) -> str:
     """
-    Draws the planet grid for the given celestial points and chart type.
+    Generate SVG code for a grid of astrological houses for the secondary subject.
 
-    Args:
-        planets_and_houses_grid_title (str): Title of the grid.
-        subject_name (str): Name of the subject.
-        available_kerykeion_celestial_points (list[KerykeionPointModel]): List of celestial points for the subject.
-        chart_type (ChartType): Type of the chart.
-        celestial_point_language (KerykeionLanguageCelestialPointModel): Language model for celestial points.
-        second_subject_name (str, optional): Name of the second subject. Defaults to None.
-        second_subject_available_kerykeion_celestial_points (list[KerykeionPointModel], optional): List of celestial points for the second subject. Defaults to None.
-        text_color (str, optional): Color of the text. Defaults to "#000000".
+    Parameters:
+    - secondary_subject_houses_list (list[KerykeionPointModel]): List of houses for the secondary subject.
+    - house_cusp_generale_name_label (str): Label for the house cusp. Defaults to "Cusp".
+    - text_color (str): Color of the text. Defaults to "#000000".
+    - x_position (int): X position for the grid. Defaults to 970.
+    - y_position (int): Y position for the grid. Defaults to 30.
 
     Returns:
-        str: The SVG output for the planet grid.
+    - str: The SVG code for the grid of houses.
     """
-    line_height = 10
-    offset = 0
-    offset_between_lines = 14
+    svg_output = f'<g transform="translate({x_position},{y_position})">'
 
-    svg_output = (
-        f'<g transform="translate(175, -15)">'
-        f'<text text-anchor="end" style="fill:{text_color}; font-size: 14px;">{planets_and_houses_grid_title} {subject_name}:</text>'
-        f'</g>'
-    )
+    line_increment = 10
+    for i, house in enumerate(secondary_subject_houses_list):
+        cusp_number = f"&#160;&#160;{i + 1}" if i < 9 else str(i + 1)
+        svg_output += (
+            f'<g transform="translate(0,{line_increment})">'
+            f'<text text-anchor="end" x="40" style="fill:{text_color}; font-size: 10px;">{house_cusp_generale_name_label} {cusp_number}:</text>'
+            f'<g transform="translate(40,-8)"><use transform="scale(0.3)" xlink:href="#{house["sign"]}" /></g>'
+            f'<text x="53" style="fill:{text_color}; font-size: 10px;"> {convert_decimal_to_degree_string(house["position"])}</text>'
+            f"</g>"
+        )
+        line_increment += 14
+
+    svg_output += "</g>"
+    return svg_output
+
+
+# =============================================================================
+# SVG DRAWING FUNCTIONS - PLANET GRIDS
+# Functions for rendering planet information tables in the chart sidebar.
+# =============================================================================
+
+
+def draw_main_planet_grid(
+    planets_and_houses_grid_title: str,
+    subject_name: str,
+    available_kerykeion_celestial_points: list[KerykeionPointModel],
+    chart_type: ChartType,
+    celestial_point_language: KerykeionLanguageCelestialPointModel,
+    text_color: str = "#000000",
+    x_position: int = 645,
+    y_position: int = 0,
+) -> str:
+    """
+    Draw the planet grid (main subject) and optional title.
+
+    The entire output is wrapped in a single SVG group `<g>` so the
+    whole block can be repositioned by changing the group transform.
+
+    Args:
+        planets_and_houses_grid_title: Title prefix to show for eligible chart types.
+        subject_name: Subject name to append to the title.
+        available_kerykeion_celestial_points: Celestial points to render in the grid.
+        chart_type: Chart type identifier (Literal string).
+        celestial_point_language: Language model for celestial point decoding.
+        text_color: Text color for labels (default: "#000000").
+        x_position: X translation applied to the outer `<g>` (default: 620).
+        y_position: Y translation applied to the outer `<g>` (default: 0).
+
+    Returns:
+        SVG string for the main planet grid wrapped in a `<g>`.
+    """
+    # Layout constants (kept identical to previous behavior)
+    BASE_Y = 30
+    HEADER_Y = 15  # Title baseline inside the wrapper
+    LINE_START = 10
+    LINE_STEP = 14
+
+    # Wrap everything inside a single group so position can be changed once
+    svg_output = f'<g transform="translate({x_position},{y_position})">'
+
+    # Add title only for specific chart types
+    if chart_type in ("Synastry", "Transit", "DualReturnChart"):
+        svg_output += (
+            f'<g transform="translate(0, {HEADER_Y})">'
+            f'<text style="fill:{text_color}; font-size: 14px;">{planets_and_houses_grid_title} {subject_name}</text>'
+            f"</g>"
+        )
 
     end_of_line = "</g>"
 
-    for i, planet in enumerate(available_kerykeion_celestial_points):
-        if i == 27:
-            line_height = 10
-            offset = -120
+    column_thresholds = _select_planet_grid_thresholds(chart_type, len(available_kerykeion_celestial_points))
 
-        decoded_name = get_decoded_kerykeion_celestial_point_name(planet["name"], celestial_point_language)
+    for i, planet in enumerate(available_kerykeion_celestial_points):
+        offset, row_index = _planet_grid_layout_position(i, column_thresholds)
+        line_height = LINE_START + (row_index * LINE_STEP)
+
+        decoded_name = get_decoded_kerykeion_celestial_point_name(
+            planet["name"],
+            celestial_point_language,
+        )
+
         svg_output += (
-            f'<g transform="translate({offset},{line_height})">'
+            f'<g transform="translate({offset},{BASE_Y + line_height})">'
             f'<text text-anchor="end" style="fill:{text_color}; font-size: 10px;">{decoded_name}</text>'
             f'<g transform="translate(5,-8)"><use transform="scale(0.4)" xlink:href="#{planet["name"]}" /></g>'
             f'<text text-anchor="start" x="19" style="fill:{text_color}; font-size: 10px;">{convert_decimal_to_degree_string(planet["position"])}</text>'
@@ -921,71 +1468,130 @@ def draw_planet_grid(
             svg_output += '<g transform="translate(74,-6)"><use transform="scale(.5)" xlink:href="#retrograde" /></g>'
 
         svg_output += end_of_line
-        line_height += offset_between_lines
 
-    if chart_type in ["Transit", "Synastry"]:
-        if second_subject_available_kerykeion_celestial_points is None:
-            raise KerykeionException("second_subject_available_kerykeion_celestial_points is None")
-
-        if chart_type == "Transit":
-            svg_output += (
-                f'<g transform="translate(320, -15)">'
-                f'<text text-anchor="end" style="fill:{text_color}; font-size: 14px;">{second_subject_name}:</text>'
-            )
-        else:
-            svg_output += (
-                f'<g transform="translate(380, -15)">'
-                f'<text text-anchor="end" style="fill:{text_color}; font-size: 14px;">{planets_and_houses_grid_title} {second_subject_name}:</text>'
-            )
-
-        svg_output += end_of_line
-
-        second_line_height = 10
-        second_offset = 250
-
-        for i, t_planet in enumerate(second_subject_available_kerykeion_celestial_points):
-            if i == 27:
-                second_line_height = 10
-                second_offset = -120
-
-            second_decoded_name = get_decoded_kerykeion_celestial_point_name(t_planet["name"], celestial_point_language)
-            svg_output += (
-                f'<g transform="translate({second_offset},{second_line_height})">'
-                f'<text text-anchor="end" style="fill:{text_color}; font-size: 10px;">{second_decoded_name}</text>'
-                f'<g transform="translate(5,-8)"><use transform="scale(0.4)" xlink:href="#{t_planet["name"]}" /></g>'
-                f'<text text-anchor="start" x="19" style="fill:{text_color}; font-size: 10px;">{convert_decimal_to_degree_string(t_planet["position"])}</text>'
-                f'<g transform="translate(60,-8)"><use transform="scale(0.3)" xlink:href="#{t_planet["sign"]}" /></g>'
-            )
-
-            if t_planet["retrograde"]:
-                svg_output += '<g transform="translate(74,-6)"><use transform="scale(.5)" xlink:href="#retrograde" /></g>'
-
-            svg_output += end_of_line
-            second_line_height += offset_between_lines
+    # Close the wrapper group
+    svg_output += "</g>"
 
     return svg_output
 
 
-def draw_transit_aspect_grid(
-        stroke_color: str,
-        available_planets: list,
-        aspects: list,
-        x_indent: int = 50,
-        y_indent: int = 250,
-        box_size: int = 14
-    ) -> str:
+def draw_secondary_planet_grid(
+    planets_and_houses_grid_title: str,
+    second_subject_name: str,
+    second_subject_available_kerykeion_celestial_points: list[KerykeionPointModel],
+    chart_type: ChartType,
+    celestial_point_language: KerykeionLanguageCelestialPointModel,
+    text_color: str = "#000000",
+    x_position: int = 910,
+    y_position: int = 0,
+) -> str:
     """
-    Draws the aspect grid for the given planets and aspects. The default args value are specific for a stand alone
-    aspect grid.
+    Draw the planet grid for the secondary subject and its title.
+
+    The entire output is wrapped in a single SVG group `<g>` so the
+    whole block can be repositioned by changing the group transform.
 
     Args:
-        stroke_color (str): The color of the stroke.
-        available_planets (list): List of all planets. Only planets with "is_active" set to True will be used.
-        aspects (list): List of aspects.
-        x_indent (int): The initial x-coordinate starting point.
-        y_indent (int): The initial y-coordinate starting point.
+        planets_and_houses_grid_title: Title prefix (used except for Transit charts).
+        second_subject_name: Name of the secondary subject.
+        second_subject_available_kerykeion_celestial_points: Celestial points to render for the secondary subject.
+        chart_type: Chart type identifier (Literal string).
+        celestial_point_language: Language model for celestial point decoding.
+        text_color: Text color for labels (default: "#000000").
+        x_position: X translation applied to the outer `<g>` (default: 870).
+        y_position: Y translation applied to the outer `<g>` (default: 0).
 
     Returns:
+        SVG string for the secondary planet grid wrapped in a `<g>`.
+    """
+    # Layout constants
+    BASE_Y = 30
+    HEADER_Y = 15
+    LINE_START = 10
+    LINE_STEP = 14
+
+    # Open wrapper group
+    svg_output = f'<g transform="translate({x_position},{y_position})">'
+
+    # Title content and its relative x offset
+    header_text = (
+        second_subject_name if chart_type == "Transit" else f"{planets_and_houses_grid_title} {second_subject_name}"
+    )
+    header_x_offset = -50 if chart_type == "Transit" else 0
+
+    svg_output += (
+        f'<g transform="translate({header_x_offset}, {HEADER_Y})">'
+        f'<text style="fill:{text_color}; font-size: 14px;">{header_text}</text>'
+        f"</g>"
+    )
+
+    # Grid rows
+    line_height = LINE_START
+    end_of_line = "</g>"
+
+    column_thresholds = _select_planet_grid_thresholds(
+        chart_type, len(second_subject_available_kerykeion_celestial_points)
+    )
+
+    for i, t_planet in enumerate(second_subject_available_kerykeion_celestial_points):
+        offset, row_index = _planet_grid_layout_position(i, column_thresholds)
+        line_height = LINE_START + (row_index * LINE_STEP)
+
+        second_decoded_name = get_decoded_kerykeion_celestial_point_name(
+            t_planet["name"],
+            celestial_point_language,
+        )
+        svg_output += (
+            f'<g transform="translate({offset},{BASE_Y + line_height})">'
+            f'<text text-anchor="end" style="fill:{text_color}; font-size: 10px;">{second_decoded_name}</text>'
+            f'<g transform="translate(5,-8)"><use transform="scale(0.4)" xlink:href="#{t_planet["name"]}" /></g>'
+            f'<text text-anchor="start" x="19" style="fill:{text_color}; font-size: 10px;">{convert_decimal_to_degree_string(t_planet["position"])}</text>'
+            f'<g transform="translate(60,-8)"><use transform="scale(0.3)" xlink:href="#{t_planet["sign"]}" /></g>'
+        )
+
+        if t_planet["retrograde"]:
+            svg_output += '<g transform="translate(74,-6)"><use transform="scale(.5)" xlink:href="#retrograde" /></g>'
+
+        svg_output += end_of_line
+
+    # Close wrapper group
+    svg_output += "</g>"
+
+    return svg_output
+
+
+# =============================================================================
+# SVG DRAWING FUNCTIONS - ASPECT GRIDS
+# Functions for rendering aspect relationship grids in natal and transit charts.
+# =============================================================================
+
+
+def draw_transit_aspect_grid(
+    stroke_color: str,
+    available_planets: list,
+    aspects: list,
+    x_indent: int = 50,
+    y_indent: int = 250,
+    box_size: int = 14,
+) -> str:
+    """
+    Draw a rectangular aspect grid for transit charts.
+
+    Unlike the triangular natal aspect grid, this grid shows all planet
+    combinations in a full matrix format, suitable for comparing aspects
+    between natal and transit planets.
+
+    Args:
+        stroke_color: CSS color for the grid lines.
+        available_planets: List of planet dictionaries. Only planets with
+            "is_active" set to True will be included.
+        aspects: List of aspect dictionaries containing p1, p2, and aspect_degrees.
+        x_indent: X-coordinate for the grid's left edge.
+        y_indent: Y-coordinate for the grid's top edge.
+        box_size: Width and height of each grid cell in pixels.
+
+    Returns:
+        SVG string containing the transit aspect grid.
         str: SVG string representing the aspect grid.
     """
     svg_output = ""
@@ -994,7 +1600,7 @@ def draw_transit_aspect_grid(
     y_start = y_indent
 
     # Filter active planets
-    active_planets = [planet for planet in available_planets if planet.is_active]
+    active_planets = [planet for planet in available_planets if planet["is_active"]]
 
     # Reverse the list of active planets for the first iteration
     reversed_planets = active_planets[::-1]
@@ -1031,12 +1637,625 @@ def draw_transit_aspect_grid(
         # Iterate over the remaining planets
         for planet_b in reversed_planets:
             # Draw the grid box for the aspect
-            svg_output += f'<rect x="{x_aspect}" y="{y_aspect}" width="{box_size}" height="{box_size}" style="{style}"/>'
+            svg_output += (
+                f'<rect x="{x_aspect}" y="{y_aspect}" width="{box_size}" height="{box_size}" style="{style}"/>'
+            )
             x_aspect += box_size
 
             # Check for aspects between the planets
             for aspect in aspects:
-                if (aspect["p1"] == planet_a["id"] and aspect["p2"] == planet_b["id"]):
+                if aspect["p1"] == planet_a["id"] and aspect["p2"] == planet_b["id"]:
                     svg_output += f'<use  x="{x_aspect - box_size + 1}" y="{y_aspect + 1}" xlink:href="#orb{aspect["aspect_degrees"]}" />'
 
     return svg_output
+
+
+# =============================================================================
+# FORMATTING UTILITIES
+# Helper functions for formatting location and datetime strings for display.
+# =============================================================================
+
+
+def format_location_string(location: str, max_length: int = 35) -> str:
+    """
+    Format a location string to ensure it fits within a specified maximum length.
+
+    If the location is longer than max_length, it attempts to shorten by using only
+    the first and last parts separated by commas. If still too long, it truncates
+    and adds ellipsis.
+
+    Args:
+        location: The original location string
+        max_length: Maximum allowed length for the output string (default: 35)
+
+    Returns:
+        Formatted location string that fits within max_length
+    """
+    if len(location) > max_length:
+        split_location = location.split(",")
+        if len(split_location) > 1:
+            shortened = split_location[0] + ", " + split_location[-1]
+            if len(shortened) > max_length:
+                return shortened[:max_length] + "..."
+            return shortened
+        else:
+            return location[:max_length] + "..."
+    return location
+
+
+def format_datetime_with_timezone(iso_datetime_string: str) -> str:
+    """
+    Format an ISO datetime string with a custom format that includes properly formatted timezone.
+
+    Args:
+        iso_datetime_string: ISO formatted datetime string
+
+    Returns:
+        Formatted datetime string with properly formatted timezone offset (HH:MM)
+    """
+    dt = datetime.datetime.fromisoformat(iso_datetime_string)
+    custom_format = dt.strftime("%Y-%m-%d %H:%M [%z]")
+    custom_format = custom_format[:-3] + ":" + custom_format[-3:]
+
+    return custom_format
+
+
+# =============================================================================
+# ELEMENT AND MODALITY DISTRIBUTION CALCULATIONS
+# Functions for calculating elemental (Fire, Earth, Air, Water) and
+# modality/quality (Cardinal, Fixed, Mutable) distributions in charts.
+# =============================================================================
+
+
+def calculate_element_points(
+    planets_settings: Sequence[KerykeionSettingsCelestialPointModel],
+    celestial_points_names: Sequence[str],
+    subject: Union[AstrologicalSubjectModel, CompositeSubjectModel, PlanetReturnModel],
+    *,
+    method: ElementQualityDistributionMethod = "weighted",
+    custom_weights: Optional[Mapping[str, float]] = None,
+) -> dict[str, float]:
+    """
+    Calculate elemental totals for a subject using the selected strategy.
+
+    Args:
+        planets_settings: Planet configuration list (kept for API compatibility).
+        celestial_points_names: Celestial point names to include.
+        subject: Astrological subject with planetary data.
+        method: Calculation method (pure_count or weighted). Defaults to weighted.
+        custom_weights: Optional overrides for point weights keyed by name.
+
+    Returns:
+        Dictionary mapping each element to its accumulated total.
+    """
+    normalized_names = [name.lower() for name in celestial_points_names]
+    weight_lookup, fallback_weight = _prepare_weight_lookup(method, custom_weights)
+
+    return _calculate_distribution_for_subject(
+        subject,
+        normalized_names,
+        _SIGN_TO_ELEMENT,
+        _ELEMENT_KEYS,
+        weight_lookup,
+        fallback_weight,
+    )
+
+
+def calculate_synastry_element_points(
+    planets_settings: Sequence[KerykeionSettingsCelestialPointModel],
+    celestial_points_names: Sequence[str],
+    subject1: AstrologicalSubjectModel,
+    subject2: AstrologicalSubjectModel,
+    *,
+    method: ElementQualityDistributionMethod = "weighted",
+    custom_weights: Optional[Mapping[str, float]] = None,
+) -> dict[str, float]:
+    """
+    Calculate combined element percentages for a synastry chart.
+
+    Args:
+        planets_settings: Planet configuration list (unused but preserved).
+        celestial_points_names: Celestial point names to process.
+        subject1: First astrological subject.
+        subject2: Second astrological subject.
+        method: Calculation strategy (pure_count or weighted).
+        custom_weights: Optional overrides for point weights.
+
+    Returns:
+        Dictionary with element percentages summing to 100.
+    """
+    normalized_names = [name.lower() for name in celestial_points_names]
+    weight_lookup, fallback_weight = _prepare_weight_lookup(method, custom_weights)
+
+    subject1_totals = _calculate_distribution_for_subject(
+        subject1,
+        normalized_names,
+        _SIGN_TO_ELEMENT,
+        _ELEMENT_KEYS,
+        weight_lookup,
+        fallback_weight,
+    )
+    subject2_totals = _calculate_distribution_for_subject(
+        subject2,
+        normalized_names,
+        _SIGN_TO_ELEMENT,
+        _ELEMENT_KEYS,
+        weight_lookup,
+        fallback_weight,
+    )
+
+    combined_totals = {key: subject1_totals[key] + subject2_totals[key] for key in _ELEMENT_KEYS}
+    total_points = sum(combined_totals.values())
+
+    if total_points == 0:
+        return {key: 0.0 for key in _ELEMENT_KEYS}
+
+    return {key: (combined_totals[key] / total_points) * 100.0 for key in _ELEMENT_KEYS}
+
+
+# =============================================================================
+# SVG DRAWING FUNCTIONS - HOUSE COMPARISON GRIDS
+# Functions for rendering house position comparisons between two charts,
+# used in synastry, return charts, and transits.
+# =============================================================================
+
+
+def draw_house_comparison_grid(
+    house_comparison: "HouseComparisonModel",
+    celestial_point_language: KerykeionLanguageCelestialPointModel,
+    active_points: list[AstrologicalPoint],
+    *,
+    points_owner_subject_number: Literal[1, 2] = 1,
+    text_color: str = "var(--kerykeion-color-neutral-content)",
+    house_position_comparison_label: str = "House Position Comparison",
+    return_point_label: str = "Return Point",
+    return_label: str = "DualReturnChart",
+    radix_label: str = "Radix",
+    x_position: int = 1100,
+    y_position: int = 0,
+) -> str:
+    """
+    Generate SVG code for displaying a comparison of points across houses between two charts.
+
+    Parameters:
+    - house_comparison ("HouseComparisonModel"): Model containing house comparison data,
+      including first_subject_name, second_subject_name, and points in houses.
+    - celestial_point_language (KerykeionLanguageCelestialPointModel): Language model for celestial points
+    - active_celestial_points (list[KerykeionPointModel]): List of active celestial points to display
+    - text_color (str): Color for the text elements
+
+    Returns:
+    - str: SVG code for the house comparison grid.
+    """
+    if points_owner_subject_number == 1:
+        comparison_data = house_comparison.first_points_in_second_houses
+    else:
+        comparison_data = house_comparison.second_points_in_first_houses
+
+    svg_output = f'<g transform="translate({x_position},{y_position})">'
+
+    # Add title
+    svg_output += f'<text text-anchor="start" x="0" y="-15" style="fill:{text_color}; font-size: 14px;">{house_position_comparison_label}</text>'
+
+    # Add column headers
+    line_increment = 10
+    svg_output += (
+        f'<g transform="translate(0,{line_increment})">'
+        f'<text text-anchor="start" x="0" style="fill:{text_color}; font-weight: bold; font-size: 10px;">{return_point_label}</text>'
+        f'<text text-anchor="start" x="77" style="fill:{text_color}; font-weight: bold; font-size: 10px;">{return_label}</text>'
+        f'<text text-anchor="start" x="132" style="fill:{text_color}; font-weight: bold; font-size: 10px;">{radix_label}</text>'
+        f"</g>"
+    )
+    line_increment += 15
+
+    # Create a dictionary to store all points by name for combined display
+    all_points_by_name = {}
+
+    for point in comparison_data:
+        # Only process points that are active
+        if point.point_name in active_points and point.point_name not in all_points_by_name:
+            all_points_by_name[point.point_name] = {
+                "name": point.point_name,
+                "secondary_house": point.projected_house_number,
+                "native_house": point.point_owner_house_number,
+            }
+
+    # Display all points organized by name
+    for name, point_data in all_points_by_name.items():
+        native_house = point_data.get("native_house", "-")
+        secondary_house = point_data.get("secondary_house", "-")
+
+        svg_output += (
+            f'<g transform="translate(0,{line_increment})">'
+            f'<g transform="translate(0,-9)"><use transform="scale(0.4)" xlink:href="#{name}" /></g>'
+            f'<text text-anchor="start" x="15" style="fill:{text_color}; font-size: 10px;">{get_decoded_kerykeion_celestial_point_name(name, celestial_point_language)}</text>'
+            f'<text text-anchor="start" x="90" style="fill:{text_color}; font-size: 10px;">{native_house}</text>'
+            f'<text text-anchor="start" x="140" style="fill:{text_color}; font-size: 10px;">{secondary_house}</text>'
+            f"</g>"
+        )
+        line_increment += 12
+
+    svg_output += "</g>"
+
+    return svg_output
+
+
+def draw_single_house_comparison_grid(
+    house_comparison: "HouseComparisonModel",
+    celestial_point_language: KerykeionLanguageCelestialPointModel,
+    active_points: list[AstrologicalPoint],
+    *,
+    points_owner_subject_number: Literal[1, 2] = 1,
+    text_color: str = "var(--kerykeion-color-neutral-content)",
+    house_position_comparison_label: str = "House Position Comparison",
+    return_point_label: str = "Return Point",
+    natal_house_label: str = "Natal House",
+    x_position: int = 1030,
+    y_position: int = 0,
+) -> str:
+    """
+    Generate SVG code for displaying celestial points and their house positions.
+
+    Parameters:
+    - house_comparison ("HouseComparisonModel"): Model containing house comparison data,
+      including first_subject_name, second_subject_name, and points in houses.
+    - celestial_point_language (KerykeionLanguageCelestialPointModel): Language model for celestial points
+    - active_points (list[AstrologicalPoint]): List of active celestial points to display
+    - points_owner_subject_number (Literal[1, 2]): Which subject's points to display (1 for first, 2 for second)
+    - text_color (str): Color for the text elements
+    - house_position_comparison_label (str): Label for the house position comparison grid
+    - return_point_label (str): Label for the return point column
+    - house_position_label (str): Label for the house position column
+    - x_position (int): X position for the grid
+    - y_position (int): Y position for the grid
+
+    Returns:
+    - str: SVG code for the house position grid.
+    """
+    if points_owner_subject_number == 1:
+        comparison_data = house_comparison.first_points_in_second_houses
+    else:
+        comparison_data = house_comparison.second_points_in_first_houses
+
+    svg_output = f'<g transform="translate({x_position},{y_position})">'
+
+    # Add title
+    svg_output += f'<text text-anchor="start" x="0" y="-15" style="fill:{text_color}; font-size: 14px;">{house_position_comparison_label}</text>'
+
+    # Add column headers
+    line_increment = 10
+    svg_output += (
+        f'<g transform="translate(0,{line_increment})">'
+        f'<text text-anchor="start" x="0" style="fill:{text_color}; font-weight: bold; font-size: 10px;">{return_point_label}</text>'
+        f'<text text-anchor="start" x="77" style="fill:{text_color}; font-weight: bold; font-size: 10px;">{natal_house_label}</text>'
+        f"</g>"
+    )
+    line_increment += 15
+
+    # Create a dictionary to store all points by name for combined display
+    all_points_by_name = {}
+
+    for point in comparison_data:
+        # Only process points that are active
+        if point.point_name in active_points and point.point_name not in all_points_by_name:
+            all_points_by_name[point.point_name] = {"name": point.point_name, "house": point.projected_house_number}
+
+    # Display all points organized by name
+    for name, point_data in all_points_by_name.items():
+        house = point_data.get("house", "-")
+
+        svg_output += (
+            f'<g transform="translate(0,{line_increment})">'
+            f'<g transform="translate(0,-9)"><use transform="scale(0.4)" xlink:href="#{name}" /></g>'
+            f'<text text-anchor="start" x="15" style="fill:{text_color}; font-size: 10px;">{get_decoded_kerykeion_celestial_point_name(name, celestial_point_language)}</text>'
+            f'<text text-anchor="start" x="90" style="fill:{text_color}; font-size: 10px;">{house}</text>'
+            f"</g>"
+        )
+        line_increment += 12
+
+    svg_output += "</g>"
+
+    return svg_output
+
+
+def draw_cusp_comparison_grid(
+    house_comparison: "HouseComparisonModel",
+    celestial_point_language: "KerykeionLanguageCelestialPointModel",
+    *,
+    cusps_owner_subject_number: Literal[1, 2] = 1,
+    text_color: str = "var(--kerykeion-color-neutral-content)",
+    cusp_position_comparison_label: str = "Cusp Position Comparison",
+    owner_cusp_label: str = "Owner Cusp",
+    projected_house_label: str = "Projected House",
+    x_position: int = 1030,
+    y_position: int = 0,
+) -> str:
+    """
+    Generate SVG code for displaying house cusps and their positions in reciprocal houses.
+
+    Parameters:
+    - house_comparison (HouseComparisonModel): House comparison data
+    - celestial_point_language (KerykeionLanguageCelestialPointModel): Language settings
+    - cusps_owner_subject_number (int): Which subject's cusps to display (1 or 2)
+    - text_color (str): Color for text elements
+    - cusp_position_comparison_label (str): Label for the comparison section
+    - owner_cusp_label (str): Label for owner cusp column
+    - projected_house_label (str): Label for projected house column
+    - x_position (int): X position for the grid
+    - y_position (int): Y position for the grid
+
+    Returns:
+    - str: SVG representation of the cusp comparison grid
+    """
+    # Select the appropriate cusp data based on subject number
+    if cusps_owner_subject_number == 1:
+        cusps_data = house_comparison.first_cusps_in_second_houses
+    else:
+        cusps_data = house_comparison.second_cusps_in_first_houses
+
+    if not cusps_data:
+        return ""
+
+    svg_output = (
+        f'<g transform="translate({x_position},{y_position})">'
+        f'<text text-anchor="start" x="0" y="-15" style="fill:{text_color}; font-size: 12px; font-weight: bold;">{cusp_position_comparison_label}</text>'
+    )
+
+    # Add column headers with the same vertical spacing pattern as draw_house_comparison_grid
+    line_increment = 10
+    svg_output += (
+        f'<g transform="translate(0,{line_increment})">'
+        f'<text text-anchor="start" x="0" style="fill:{text_color}; font-weight: bold; font-size: 10px;">{owner_cusp_label}</text>'
+        f'<text text-anchor="start" x="70" style="fill:{text_color}; font-weight: bold; font-size: 10px;">{projected_house_label}</text>'
+        f"</g>"
+    )
+    line_increment += 15
+
+    # Derive a short cusp label (e.g. "Cusp", "Cuspide") from the owner column header.
+    cusp_cell_label = owner_cusp_label.split()[-1] if owner_cusp_label else "Cusp"
+
+    for cusp in cusps_data:
+        # Use numeric house identifiers to avoid exposing internal names like "First_House".
+        owner_house_number = cusp.point_owner_house_number or 0
+        owner_house_display = f"{cusp_cell_label} {owner_house_number}" if owner_house_number else "-"
+        projected_house_display = str(cusp.projected_house_number)
+
+        svg_output += (
+            f'<g transform="translate(0,{line_increment})">'
+            f'<text text-anchor="start" x="0" style="fill:{text_color}; font-size: 10px;">{owner_house_display}</text>'
+            f'<text text-anchor="start" x="70" style="fill:{text_color}; font-size: 10px;">{projected_house_display}</text>'
+            f"</g>"
+        )
+        line_increment += 12
+
+    svg_output += "</g>"
+
+    return svg_output
+
+
+def draw_single_cusp_comparison_grid(
+    house_comparison: "HouseComparisonModel",
+    celestial_point_language: "KerykeionLanguageCelestialPointModel",
+    *,
+    cusps_owner_subject_number: Literal[1, 2] = 1,
+    text_color: str = "var(--kerykeion-color-neutral-content)",
+    cusp_position_comparison_label: str = "Cusp Position Comparison",
+    owner_cusp_label: str = "Owner Cusp",
+    projected_house_label: str = "Projected House",
+    x_position: int = 1030,
+    y_position: int = 0,
+) -> str:
+    """
+    Generate SVG code for displaying house cusps and their positions in reciprocal houses (single grid).
+
+    Parameters:
+    - house_comparison (HouseComparisonModel): House comparison data
+    - celestial_point_language (KerykeionLanguageCelestialPointModel): Language settings
+    - cusps_owner_subject_number (int): Which subject's cusps to display (1 or 2)
+    - text_color (str): Color for text elements
+    - cusp_position_comparison_label (str): Label for the comparison section
+    - owner_cusp_label (str): Label for owner cusp column
+    - projected_house_label (str): Label for projected house column
+    - x_position (int): X position for the grid
+    - y_position (int): Y position for the grid
+
+    Returns:
+    - str: SVG representation of the cusp comparison grid
+    """
+    return draw_cusp_comparison_grid(
+        house_comparison=house_comparison,
+        celestial_point_language=celestial_point_language,
+        cusps_owner_subject_number=cusps_owner_subject_number,
+        text_color=text_color,
+        cusp_position_comparison_label=cusp_position_comparison_label,
+        owner_cusp_label=owner_cusp_label,
+        projected_house_label=projected_house_label,
+        x_position=x_position,
+        y_position=y_position,
+    )
+
+
+# =============================================================================
+# MOON PHASE CALCULATIONS AND RENDERING
+# Functions for calculating lunar phase geometry and generating SVG moon icons.
+# =============================================================================
+
+
+def makeLunarPhase(degrees_between_sun_and_moon: float, latitude: float) -> str:
+    """
+    Generate SVG representation of lunar phase.
+
+    Parameters:
+    - degrees_between_sun_and_moon (float): Angle between sun and moon in degrees
+    - latitude (float): Observer's latitude (no longer used, kept for backward compatibility)
+
+    Returns:
+    - str: SVG representation of lunar phase
+    """
+    params = calculate_moon_phase_chart_params(degrees_between_sun_and_moon)
+
+    phase_angle = params["phase_angle"]
+    illuminated_fraction = 1.0 - params["illuminated_fraction"]
+    shadow_ellipse_rx = abs(params["shadow_ellipse_rx"])
+
+    radius = 10.0
+    center_x = 20.0
+    center_y = 10.0
+
+    bright_color = "var(--kerykeion-chart-color-lunar-phase-1)"
+    shadow_color = "var(--kerykeion-chart-color-lunar-phase-0)"
+
+    is_waxing = phase_angle < 180.0
+
+    if illuminated_fraction <= 1e-6:
+        base_fill = shadow_color
+        overlay_path = ""
+        overlay_fill = ""
+    elif 1.0 - illuminated_fraction <= 1e-6:
+        base_fill = bright_color
+        overlay_path = ""
+        overlay_fill = ""
+    else:
+        is_lit_major = illuminated_fraction >= 0.5
+        if is_lit_major:
+            base_fill = bright_color
+            overlay_fill = shadow_color
+            overlay_side = "left" if is_waxing else "right"
+        else:
+            base_fill = shadow_color
+            overlay_fill = bright_color
+            overlay_side = "right" if is_waxing else "left"
+
+        # The illuminated limb is the orthographic projection of the lunar terminator;
+        # it appears as an ellipse with vertical radius equal to the lunar radius and
+        # horizontal radius scaled by |cos(phase)|.
+        def build_lune_path(side: str, ellipse_rx: float) -> str:
+            ellipse_rx = max(0.0, min(radius, ellipse_rx))
+            top_y = center_y - radius
+            bottom_y = center_y + radius
+            circle_sweep = 1 if side == "right" else 0
+
+            if ellipse_rx <= 1e-6:
+                return (
+                    f"M {center_x:.4f} {top_y:.4f}"
+                    f" A {radius:.4f} {radius:.4f} 0 0 {circle_sweep} {center_x:.4f} {bottom_y:.4f}"
+                    f" L {center_x:.4f} {top_y:.4f}"
+                    " Z"
+                )
+
+            return (
+                f"M {center_x:.4f} {top_y:.4f}"
+                f" A {radius:.4f} {radius:.4f} 0 0 {circle_sweep} {center_x:.4f} {bottom_y:.4f}"
+                f" A {ellipse_rx:.4f} {radius:.4f} 0 0 {circle_sweep} {center_x:.4f} {top_y:.4f}"
+                " Z"
+            )
+
+        overlay_path = build_lune_path(overlay_side, shadow_ellipse_rx)
+
+    svg_lines = [
+        '<g transform="rotate(0 20 10)">',
+        "    <defs>",
+        '        <clipPath id="moonPhaseCutOffCircle">',
+        '            <circle cx="20" cy="10" r="10" />',
+        "        </clipPath>",
+        "    </defs>",
+        f'    <circle cx="20" cy="10" r="10" style="fill: {base_fill}" />',
+    ]
+
+    if overlay_path:
+        svg_lines.append(
+            f'    <path d="{overlay_path}" style="fill: {overlay_fill}" clip-path="url(#moonPhaseCutOffCircle)" />'
+        )
+
+    svg_lines.append(
+        '    <circle cx="20" cy="10" r="10" style="fill: none; stroke: var(--kerykeion-chart-color-lunar-phase-0); stroke-width: 0.5px; stroke-opacity: 0.5" />'
+    )
+    svg_lines.append("</g>")
+
+    return "\n".join(svg_lines)
+
+
+def calculate_quality_points(
+    planets_settings: Sequence[KerykeionSettingsCelestialPointModel],
+    celestial_points_names: Sequence[str],
+    subject: Union[AstrologicalSubjectModel, CompositeSubjectModel, PlanetReturnModel],
+    *,
+    method: ElementQualityDistributionMethod = "weighted",
+    custom_weights: Optional[Mapping[str, float]] = None,
+) -> dict[str, float]:
+    """
+    Calculate modality totals for a subject using the selected strategy.
+
+    Args:
+        planets_settings: Planet configuration list (kept for API compatibility).
+        celestial_points_names: Celestial point names to include.
+        subject: Astrological subject with planetary data.
+        method: Calculation method (pure_count or weighted). Defaults to weighted.
+        custom_weights: Optional overrides for point weights keyed by name.
+
+    Returns:
+        Dictionary mapping each modality to its accumulated total.
+    """
+    normalized_names = [name.lower() for name in celestial_points_names]
+    weight_lookup, fallback_weight = _prepare_weight_lookup(method, custom_weights)
+
+    return _calculate_distribution_for_subject(
+        subject,
+        normalized_names,
+        _SIGN_TO_QUALITY,
+        _QUALITY_KEYS,
+        weight_lookup,
+        fallback_weight,
+    )
+
+
+def calculate_synastry_quality_points(
+    planets_settings: Sequence[KerykeionSettingsCelestialPointModel],
+    celestial_points_names: Sequence[str],
+    subject1: AstrologicalSubjectModel,
+    subject2: AstrologicalSubjectModel,
+    *,
+    method: ElementQualityDistributionMethod = "weighted",
+    custom_weights: Optional[Mapping[str, float]] = None,
+) -> dict[str, float]:
+    """
+    Calculate combined modality percentages for a synastry chart.
+
+    Args:
+        planets_settings: Planet configuration list (unused but preserved).
+        celestial_points_names: Celestial point names to process.
+        subject1: First astrological subject.
+        subject2: Second astrological subject.
+        method: Calculation strategy (pure_count or weighted).
+        custom_weights: Optional overrides for point weights.
+
+    Returns:
+        Dictionary with modality percentages summing to 100.
+    """
+    normalized_names = [name.lower() for name in celestial_points_names]
+    weight_lookup, fallback_weight = _prepare_weight_lookup(method, custom_weights)
+
+    subject1_totals = _calculate_distribution_for_subject(
+        subject1,
+        normalized_names,
+        _SIGN_TO_QUALITY,
+        _QUALITY_KEYS,
+        weight_lookup,
+        fallback_weight,
+    )
+    subject2_totals = _calculate_distribution_for_subject(
+        subject2,
+        normalized_names,
+        _SIGN_TO_QUALITY,
+        _QUALITY_KEYS,
+        weight_lookup,
+        fallback_weight,
+    )
+
+    combined_totals = {key: subject1_totals[key] + subject2_totals[key] for key in _QUALITY_KEYS}
+    total_points = sum(combined_totals.values())
+
+    if total_points == 0:
+        return {key: 0.0 for key in _QUALITY_KEYS}
+
+    return {key: (combined_totals[key] / total_points) * 100.0 for key in _QUALITY_KEYS}

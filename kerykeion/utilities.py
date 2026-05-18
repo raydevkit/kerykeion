@@ -1,101 +1,236 @@
-from kerykeion.kr_types import KerykeionPointModel, KerykeionException, ZodiacSignModel, AstrologicalSubjectModel, LunarPhaseModel
-from kerykeion.kr_types.kr_literals import LunarPhaseEmoji, LunarPhaseName, PointType, Planet, Houses, AxialCusps
-from typing import Union, get_args, TYPE_CHECKING
-import logging
+"""
+Kerykeion Utilities Module
+
+This module provides utility functions for astrological calculations including:
+- Zodiac position conversions and validations
+- House position determinations
+- Lunar phase calculations
+- Angular mathematics (circular mean, sorting)
+- Date/time conversions (Julian Day)
+- SVG processing utilities
+
+Author: Giacomo Battaglia
+Copyright: (C) 2025 Kerykeion Project
+License: AGPL-3.0
+"""
+
+from kerykeion.schemas import (
+    KerykeionPointModel,
+    KerykeionException,
+    ZodiacSignModel,
+    AstrologicalSubjectModel,
+    LunarPhaseModel,
+    CompositeSubjectModel,
+    PlanetReturnModel,
+    ZodiacType,
+)
+from kerykeion.schemas.kr_literals import (
+    LunarPhaseEmoji,
+    LunarPhaseName,
+    PointType,
+    AstrologicalPoint,
+    Houses,
+)
+from typing import Union, Optional, get_args, cast
+from logging import DEBUG, INFO, WARNING, ERROR, CRITICAL, basicConfig, getLogger
 import math
 import re
-
-if TYPE_CHECKING:
-    from kerykeion import AstrologicalSubject
+from datetime import datetime
 
 
-def get_number_from_name(name: Planet) -> int:
-    """Utility function, gets planet id from the name."""
+logger = getLogger(__name__)
 
-    if name == "Sun":
-        return 0
-    elif name == "Moon":
-        return 1
-    elif name == "Mercury":
-        return 2
-    elif name == "Venus":
-        return 3
-    elif name == "Mars":
-        return 4
-    elif name == "Jupiter":
-        return 5
-    elif name == "Saturn":
-        return 6
-    elif name == "Uranus":
-        return 7
-    elif name == "Neptune":
-        return 8
-    elif name == "Pluto":
-        return 9
-    elif name == "Mean_Node":
-        return 10
-    elif name == "True_Node":
-        return 11
-    # Note: Swiss ephemeris library has no constants for south nodes. We're using integers >= 1000 for them.
-    elif name == "Mean_South_Node":
-        return 1000
-    elif name == "True_South_Node":
-        return 1100
-    elif name == "Chiron":
-        return 15
-    elif name == "Mean_Lilith":
-        return 12
-    elif name == "Ascendant": # TODO: Is this needed?
-        return 9900
-    elif name == "Descendant": # TODO: Is this needed?
-        return 9901
-    elif name == "Medium_Coeli": # TODO: Is this needed?
-        return 9902
-    elif name == "Imum_Coeli": # TODO: Is this needed?
-        return 9903
+
+# =============================================================================
+# CONSTANTS AND MAPPINGS
+# =============================================================================
+
+# Mapping of astrological point names to Swiss Ephemeris IDs
+_POINT_NUMBER_MAP: dict[str, int] = {
+    "Sun": 0,
+    "Moon": 1,
+    "Mercury": 2,
+    "Venus": 3,
+    "Mars": 4,
+    "Jupiter": 5,
+    "Saturn": 6,
+    "Uranus": 7,
+    "Neptune": 8,
+    "Pluto": 9,
+    "Mean_North_Lunar_Node": 10,
+    "True_North_Lunar_Node": 11,
+    # Swiss Ephemeris has no dedicated IDs for the south nodes; we reserve high values.
+    "Mean_South_Lunar_Node": 1000,
+    "True_South_Lunar_Node": 1100,
+    "Chiron": 15,
+    "Mean_Lilith": 12,
+    "Ascendant": 9900,
+    "Descendant": 9901,
+    "Medium_Coeli": 9902,
+    "Imum_Coeli": 9903,
+}
+
+# Zodiac sign properties lookup table
+_ZODIAC_SIGNS: dict[int, ZodiacSignModel] = {
+    0: ZodiacSignModel(sign="Ari", quality="Cardinal", element="Fire", emoji="♈️", sign_num=0),
+    1: ZodiacSignModel(sign="Tau", quality="Fixed", element="Earth", emoji="♉️", sign_num=1),
+    2: ZodiacSignModel(sign="Gem", quality="Mutable", element="Air", emoji="♊️", sign_num=2),
+    3: ZodiacSignModel(sign="Can", quality="Cardinal", element="Water", emoji="♋️", sign_num=3),
+    4: ZodiacSignModel(sign="Leo", quality="Fixed", element="Fire", emoji="♌️", sign_num=4),
+    5: ZodiacSignModel(sign="Vir", quality="Mutable", element="Earth", emoji="♍️", sign_num=5),
+    6: ZodiacSignModel(sign="Lib", quality="Cardinal", element="Air", emoji="♎️", sign_num=6),
+    7: ZodiacSignModel(sign="Sco", quality="Fixed", element="Water", emoji="♏️", sign_num=7),
+    8: ZodiacSignModel(sign="Sag", quality="Mutable", element="Fire", emoji="♐️", sign_num=8),
+    9: ZodiacSignModel(sign="Cap", quality="Cardinal", element="Earth", emoji="♑️", sign_num=9),
+    10: ZodiacSignModel(sign="Aqu", quality="Fixed", element="Air", emoji="♒️", sign_num=10),
+    11: ZodiacSignModel(sign="Pis", quality="Mutable", element="Water", emoji="♓️", sign_num=11),
+}
+
+# House name mappings
+_HOUSE_NAMES: dict[int, Houses] = {
+    1: "First_House",
+    2: "Second_House",
+    3: "Third_House",
+    4: "Fourth_House",
+    5: "Fifth_House",
+    6: "Sixth_House",
+    7: "Seventh_House",
+    8: "Eighth_House",
+    9: "Ninth_House",
+    10: "Tenth_House",
+    11: "Eleventh_House",
+    12: "Twelfth_House",
+}
+
+_HOUSE_NUMBERS: dict[Houses, int] = {v: k for k, v in _HOUSE_NAMES.items()}
+
+
+# =============================================================================
+# LOGGING UTILITIES
+# =============================================================================
+
+
+def setup_logging(level: str) -> None:
+    """
+    Configure the root logger for consistent formatting across the library.
+
+    Args:
+        level: Logging level as string (debug, info, warning, error, critical).
+               Case-insensitive. Defaults to INFO if invalid.
+    """
+    normalized_level = (level or "").strip().lower()
+    level_map: dict[str, int] = {
+        "debug": DEBUG,
+        "info": INFO,
+        "warning": WARNING,
+        "error": ERROR,
+        "critical": CRITICAL,
+    }
+
+    selected_level = level_map.get(normalized_level, INFO)
+    basicConfig(
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        level=selected_level,
+    )
+    logger.setLevel(selected_level)
+
+
+# =============================================================================
+# ZODIAC AND POINT UTILITIES
+# =============================================================================
+
+
+def normalize_zodiac_type(value: str) -> ZodiacType:
+    """
+    Normalize a zodiac type string to its canonical representation.
+
+    Handles case-insensitive matching and legacy formats like "tropic" or "Tropic",
+    automatically converting them to the canonical forms "Tropical" or "Sidereal".
+
+    Args:
+        value: Input zodiac type string (case-insensitive).
+
+    Returns:
+        ZodiacType: Canonical zodiac type ("Tropical" or "Sidereal").
+
+    Raises:
+        ValueError: If `value` is not a recognized zodiac type.
+
+    Examples:
+        >>> normalize_zodiac_type("tropical")
+        'Tropical'
+        >>> normalize_zodiac_type("Tropic")
+        'Tropical'
+        >>> normalize_zodiac_type("SIDEREAL")
+        'Sidereal'
+    """
+    value_lower = value.lower()
+
+    if value_lower in ("tropical", "tropic"):
+        return cast(ZodiacType, "Tropical")
+    elif value_lower == "sidereal":
+        return cast(ZodiacType, "Sidereal")
     else:
-        raise KerykeionException(f"Error in getting number from name! Name: {name}")
+        raise ValueError(
+            "'{value}' is not a valid zodiac type. Accepted values are: Tropical, Sidereal "
+            "(case-insensitive, 'tropic' also accepted as legacy).".format(value=value)
+        )
+
+
+def get_number_from_name(name: AstrologicalPoint) -> int:
+    """
+    Convert an astrological point name to its corresponding numerical identifier.
+
+    Args:
+        name: The name of the astrological point
+
+    Returns:
+        The numerical identifier used in Swiss Ephemeris calculations
+
+    Raises:
+        KerykeionException: If the name is not recognized
+    """
+    try:
+        return _POINT_NUMBER_MAP[str(name)]
+    except KeyError as exc:
+        raise KerykeionException(f"Error in getting number from name! Name: {name}") from exc
 
 
 def get_kerykeion_point_from_degree(
-    degree: Union[int, float], name: Union[Planet, Houses, AxialCusps], point_type: PointType
+    degree: Union[int, float],
+    name: Union[AstrologicalPoint, Houses],
+    point_type: PointType,
+    speed: Optional[float] = None,
+    declination: Optional[float] = None,
+    magnitude: Optional[float] = None,
 ) -> KerykeionPointModel:
     """
-    Returns a KerykeionPointModel object based on the given degree.
+    Create a KerykeionPointModel from a degree position.
 
     Args:
-        degree (Union[int, float]): The degree of the celestial point.
-        name (str): The name of the celestial point.
-        point_type (PointType): The type of the celestial point.
-
-    Raises:
-        KerykeionException: If the degree is not within the valid range (0-360).
+        degree: The degree position (0-360, negative values are converted to positive)
+        name: The name of the celestial point or house
+        point_type: The type classification of the point
+        speed: The velocity/speed of the celestial point in degrees per day (optional)
+        declination: The declination of the celestial point in degrees (optional)
+        magnitude: The apparent visual magnitude for fixed stars (optional)
 
     Returns:
-        KerykeionPointModel: The model representing the celestial point.
+        A KerykeionPointModel with calculated zodiac sign, position, and properties
+
+    Raises:
+        KerykeionException: If the degree is >= 360 after normalization
     """
+    # Normalize negative degrees
+    if degree < 0:
+        degree = degree % 360
 
-    if degree < 0 or degree >= 360:
+    if degree >= 360:
         raise KerykeionException(f"Error in calculating positions! Degrees: {degree}")
-
-    ZODIAC_SIGNS = {
-        0: ZodiacSignModel(sign="Ari", quality="Cardinal", element="Fire", emoji="♈️", sign_num=0),
-        1: ZodiacSignModel(sign="Tau", quality="Fixed", element="Earth", emoji="♉️", sign_num=1),
-        2: ZodiacSignModel(sign="Gem", quality="Mutable", element="Air", emoji="♊️", sign_num=2),
-        3: ZodiacSignModel(sign="Can", quality="Cardinal", element="Water", emoji="♋️", sign_num=3),
-        4: ZodiacSignModel(sign="Leo", quality="Fixed", element="Fire", emoji="♌️", sign_num=4),
-        5: ZodiacSignModel(sign="Vir", quality="Mutable", element="Earth", emoji="♍️", sign_num=5),
-        6: ZodiacSignModel(sign="Lib", quality="Cardinal", element="Air", emoji="♎️", sign_num=6),
-        7: ZodiacSignModel(sign="Sco", quality="Fixed", element="Water", emoji="♏️", sign_num=7),
-        8: ZodiacSignModel(sign="Sag", quality="Mutable", element="Fire", emoji="♐️", sign_num=8),
-        9: ZodiacSignModel(sign="Cap", quality="Cardinal", element="Earth", emoji="♑️", sign_num=9),
-        10: ZodiacSignModel(sign="Aqu", quality="Fixed", element="Air", emoji="♒️", sign_num=10),
-        11: ZodiacSignModel(sign="Pis", quality="Mutable", element="Water", emoji="♓️", sign_num=11),
-    }
 
     sign_index = int(degree // 30)
     sign_degree = degree % 30
-    zodiac_sign = ZODIAC_SIGNS[sign_index]
+    zodiac_sign = _ZODIAC_SIGNS[sign_index]
 
     return KerykeionPointModel(
         name=name,
@@ -107,307 +242,306 @@ def get_kerykeion_point_from_degree(
         abs_pos=degree,
         emoji=zodiac_sign.emoji,
         point_type=point_type,
+        speed=speed,
+        declination=declination,
+        magnitude=magnitude,
     )
 
-def setup_logging(level: str) -> None:
-    """
-    Setup logging for testing.
 
-    Args:
-        level: Log level as a string, options: debug, info, warning, error
-    """
-    logging_options: dict[str, int] = {
-        "debug": logging.DEBUG,
-        "info": logging.INFO,
-        "warning": logging.WARNING,
-        "error": logging.ERROR,
-        "critical": logging.CRITICAL,
-    }
-    format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    loglevel: int = logging_options.get(level, logging.INFO)
-    logging.basicConfig(format=format, level=loglevel)
+# =============================================================================
+# HOUSE UTILITIES
+# =============================================================================
 
 
 def is_point_between(
-    start_point: Union[int, float],
-    end_point: Union[int, float],
-    evaluated_point: Union[int, float]
+    start_angle: Union[int, float], end_angle: Union[int, float], candidate: Union[int, float]
 ) -> bool:
     """
-    Determines if a point is between two others on a circle, with additional rules:
-    - If evaluated_point == start_point, it is considered between.
-    - If evaluated_point == end_point, it is NOT considered between.
-    - The range between start_point and end_point must not exceed 180°.
+    Check if a candidate angle lies on the clockwise arc from start to end angle.
 
     Args:
-        - start_point: The first point on the circle.
-        - end_point: The second point on the circle.
-        - evaluated_point: The point to check.
+        start_angle: Starting angle in degrees
+        end_angle: Ending angle in degrees
+        candidate: Angle to check
 
     Returns:
-        - True if evaluated_point is between start_point and end_point, False otherwise.
-    """
-
-    # Normalize angles to [0, 360)
-    start_point = start_point % 360
-    end_point = end_point % 360
-    evaluated_point = evaluated_point % 360
-
-    # Compute angular difference
-    angular_difference = math.fmod(end_point - start_point + 360, 360)
-
-    # Ensure the range is not greater than 180°. Otherwise, it is not truly defined what
-    # being located in between two points on a circle actually means.
-    if angular_difference > 180:
-        raise KerykeionException(f"The angle between start and end point is not allowed to exceed 180°, yet is: {angular_difference}")
-
-    # Handle explicitly when evaluated_point == start_point. Note: It may happen for mathematical
-    # reasons that evaluated_point and start_point deviate very slightly from each other, but
-    # should really be same value. This case is captured later below by the term 0 <= p1_p3.
-    if evaluated_point == start_point:
-        return True
-
-    # Handle explicitly when evaluated_point == end_point
-    if evaluated_point == end_point:
-        return False
-
-    # Compute angular differences for evaluation
-    p1_p3 = math.fmod(evaluated_point - start_point + 360, 360)
-
-    # Check if point lies in the interval
-    return (0 <= p1_p3) and (p1_p3 < angular_difference)
-
-
-
-def get_planet_house(planet_position_degree: Union[int, float], houses_degree_ut_list: list) -> Houses:
-    """
-    Determines the house in which a planet is located based on its position in degrees.
-
-    Args:
-        planet_position_degree (Union[int, float]): The position of the planet in degrees.
-        houses_degree_ut_list (list): A list of the houses in degrees (0-360).
-
-    Returns:
-        str: The house in which the planet is located.
+        True if candidate is on the clockwise arc from start to end
 
     Raises:
-        ValueError: If the planet's position does not fall within any house range.
+        KerykeionException: If the arc exceeds 180°
     """
+    normalize = lambda value: value % 360
 
+    start = normalize(start_angle)
+    end = normalize(end_angle)
+    target = normalize(candidate)
+    span = (end - start) % 360
+
+    if span > 180:
+        raise KerykeionException(f"The angle between start and end point is not allowed to exceed 180°, yet is: {span}")
+    if math.isclose(target, start, rel_tol=1e-9, abs_tol=1e-12):
+        return True
+    if math.isclose(target, end, rel_tol=1e-9, abs_tol=1e-12):
+        return False
+    distance_from_start = (target - start) % 360
+    return distance_from_start < span
+
+
+def get_planet_house(planet_degree: Union[int, float], houses_degree_ut_list: list) -> Houses:
+    """
+    Determine which house contains a planet based on its degree position.
+
+    Args:
+        planet_degree: The planet's position in degrees (0-360)
+        houses_degree_ut_list: List of house cusp degrees
+
+    Returns:
+        The house name containing the planet
+
+    Raises:
+        ValueError: If the planet's position doesn't fall within any house range
+    """
     house_names = get_args(Houses)
 
-    # Iterate through the house boundaries to find the correct house
     for i in range(len(house_names)):
         start_degree = houses_degree_ut_list[i]
         end_degree = houses_degree_ut_list[(i + 1) % len(houses_degree_ut_list)]
 
-        if is_point_between(start_degree, end_degree, planet_position_degree):
+        if is_point_between(start_degree, end_degree, planet_degree):
             return house_names[i]
 
-    # If no house is found, raise an error
-    raise ValueError(f"Error in house calculation, planet: {planet_position_degree}, houses: {houses_degree_ut_list}")
+    raise ValueError(f"Error in house calculation, planet: {planet_degree}, houses: {houses_degree_ut_list}")
 
 
-def get_moon_emoji_from_phase_int(phase: int) -> LunarPhaseEmoji:
+def get_house_name(house_number: int) -> Houses:
     """
-    Returns the emoji of the moon phase.
+    Convert a house number to its corresponding house name.
 
     Args:
-        - phase: The phase of the moon (0-28)
+        house_number: House number (1-12)
 
     Returns:
-        - The emoji of the moon phase
+        The house name
+
+    Raises:
+        ValueError: If house_number is not in range 1-12
     """
+    name = _HOUSE_NAMES.get(house_number, None)
+    if name is None:
+        raise ValueError(f"Invalid house number: {house_number}")
+    return name
 
-    lunar_phase_emojis = get_args(LunarPhaseEmoji)
 
-    if phase == 1:
-        result = lunar_phase_emojis[0]
-    elif phase < 7:
-        result = lunar_phase_emojis[1]
-    elif 7 <= phase <= 9:
-        result = lunar_phase_emojis[2]
-    elif phase < 14:
-        result = lunar_phase_emojis[3]
-    elif phase == 14:
-        result = lunar_phase_emojis[4]
-    elif phase < 20:
-        result = lunar_phase_emojis[5]
-    elif 20 <= phase <= 22:
-        result = lunar_phase_emojis[6]
-    elif phase <= 28:
-        result = lunar_phase_emojis[7]
-
-    else:
-        raise KerykeionException(f"Error in moon emoji calculation! Phase: {phase}")
-
-    return result
-
-def get_moon_phase_name_from_phase_int(phase: int) -> LunarPhaseName:
+def get_house_number(house_name: Houses) -> int:
     """
-    Returns the name of the moon phase.
+    Convert a house name to its corresponding house number.
 
     Args:
-        - phase: The phase of the moon (0-28)
+        house_name: The house name
 
     Returns:
-        - The name of the moon phase
+        House number (1-12)
+
+    Raises:
+        ValueError: If house_name is not recognized
     """
-    lunar_phase_names = get_args(LunarPhaseName)
+    number = _HOUSE_NUMBERS.get(house_name, None)
+    if number is None:
+        raise ValueError(f"Invalid house name: {house_name}")
+    return number
 
 
-    if phase == 1:
-        result = lunar_phase_names[0]
-    elif phase < 7:
-        result =  lunar_phase_names[1]
-    elif 7 <= phase <= 9:
-        result = lunar_phase_names[2]
-    elif phase < 14:
-        result = lunar_phase_names[3]
-    elif phase == 14:
-        result = lunar_phase_names[4]
-    elif phase < 20:
-        result = lunar_phase_names[5]
-    elif 20 <= phase <= 22:
-        result = lunar_phase_names[6]
-    elif phase <= 28:
-        result = lunar_phase_names[7]
-
-    else:
-        raise KerykeionException(f"Error in moon name calculation! Phase: {phase}")
-
-    return result
-
-
-def check_and_adjust_polar_latitude(latitude: float) -> float:
+def get_houses_list(
+    subject: Union[AstrologicalSubjectModel, CompositeSubjectModel, PlanetReturnModel],
+) -> list[KerykeionPointModel]:
     """
-        Utility function to check if the location is in the polar circle.
-        If it is, it sets the latitude to 66 or -66 degrees.
-    """
-    if latitude > 66.0:
-        latitude = 66.0
-        logging.info("Polar circle override for houses, using 66 degrees")
+    Get a list of house objects in order from the subject.
 
-    elif latitude < -66.0:
-        latitude = -66.0
-        logging.info("Polar circle override for houses, using -66 degrees")
+    Args:
+        subject: The astrological subject containing house data
 
-    return latitude
-
-
-def get_houses_list(subject: Union["AstrologicalSubject", AstrologicalSubjectModel]) -> list[KerykeionPointModel]:
-    """
-    Return the names of the houses in the order of the houses.
+    Returns:
+        List of KerykeionPointModel objects representing the houses
     """
     houses_absolute_position_list = []
     for house in subject.houses_names_list:
-            houses_absolute_position_list.append(subject[house.lower()])
+        houses_absolute_position_list.append(subject[house.lower()])
 
     return houses_absolute_position_list
 
 
-def get_available_astrological_points_list(subject: Union["AstrologicalSubject", AstrologicalSubjectModel]) -> list[KerykeionPointModel]:
+def get_available_astrological_points_list(subject: AstrologicalSubjectModel) -> list[KerykeionPointModel]:
     """
-    Return the names of the planets in the order of the planets.
-    The names can be used to access the planets from the AstrologicalSubject object with the __getitem__ method or the [] operator.
+    Get a list of active astrological point objects from the subject.
+
+    Args:
+        subject: The astrological subject containing point data
+
+    Returns:
+        List of KerykeionPointModel objects for all active points
     """
     planets_absolute_position_list = []
-    for planet in subject.planets_names_list:
-            planets_absolute_position_list.append(subject[planet.lower()])
-
-    for axis in subject.axial_cusps_names_list:
-        planets_absolute_position_list.append(subject[axis.lower()])
+    for planet in subject.active_points:
+        planets_absolute_position_list.append(subject[planet.lower()])
 
     return planets_absolute_position_list
 
 
-def circular_mean(first_position: Union[int, float], second_position: Union[int, float]) -> float:
+def find_common_active_points(
+    first_points: list[AstrologicalPoint], second_points: list[AstrologicalPoint]
+) -> list[AstrologicalPoint]:
     """
-    Computes the circular mean of two astrological positions (e.g., house cusps, planets).
-
-    This function ensures that positions crossing 0° Aries (360°) are correctly averaged,
-    avoiding errors that occur with simple linear means.
+    Find astrological points that appear in both input lists.
 
     Args:
-        position1 (Union[int, float]): First position in degrees (0-360).
-        position2 (Union[int, float]): Second position in degrees (0-360).
+        first_points: First list of astrological points
+        second_points: Second list of astrological points
 
     Returns:
-        float: The circular mean position in degrees (0-360).
+        List of points common to both input lists (without duplicates)
+    """
+    return sorted(set(first_points) & set(second_points))
+
+
+# =============================================================================
+# LUNAR PHASE UTILITIES
+# =============================================================================
+
+
+def _get_lunar_phase_index(phase: int) -> int:
+    """
+    Get the index for lunar phase lookup based on phase number.
+
+    Args:
+        phase: The lunar phase number (1-28)
+
+    Returns:
+        Index (0-7) for lunar phase lookup arrays
+
+    Raises:
+        KerykeionException: If phase is outside valid range
+    """
+    if phase == 1:
+        return 0
+    elif phase < 7:
+        return 1
+    elif 7 <= phase <= 9:
+        return 2
+    elif phase < 14:
+        return 3
+    elif phase == 14:
+        return 4
+    elif phase < 20:
+        return 5
+    elif 20 <= phase <= 22:
+        return 6
+    elif phase <= 28:
+        return 7
+    else:
+        raise KerykeionException(f"Error in lunar phase calculation! Phase: {phase}")
+
+
+def get_moon_emoji_from_phase_int(phase: int) -> LunarPhaseEmoji:
+    """
+    Get the emoji representation of a lunar phase.
+
+    Args:
+        phase: The lunar phase number (0-28)
+
+    Returns:
+        The corresponding emoji for the lunar phase
+
+    Raises:
+        KerykeionException: If phase is outside valid range
+    """
+    lunar_phase_emojis = get_args(LunarPhaseEmoji)
+    index = _get_lunar_phase_index(phase)
+    return lunar_phase_emojis[index]
+
+
+def get_moon_phase_name_from_phase_int(phase: int) -> LunarPhaseName:
+    """
+    Get the name of a lunar phase from its numerical value.
+
+    Args:
+        phase: The lunar phase number (0-28)
+
+    Returns:
+        The corresponding name for the lunar phase
+
+    Raises:
+        KerykeionException: If phase is outside valid range
+    """
+    lunar_phase_names = get_args(LunarPhaseName)
+    index = _get_lunar_phase_index(phase)
+    return lunar_phase_names[index]
+
+
+def check_and_adjust_polar_latitude(latitude: float) -> float:
+    """
+    Adjust latitude values for polar regions to prevent calculation errors.
+
+    Latitudes beyond ±66° are clamped to ±66° for house calculations.
+
+    Args:
+        latitude: The original latitude value
+
+    Returns:
+        The adjusted latitude value, clamped between -66° and 66°
+    """
+    if latitude > 66.0:
+        latitude = 66.0
+        logger.info("Latitude capped at 66° to keep house calculations stable.")
+
+    elif latitude < -66.0:
+        latitude = -66.0
+        logger.info("Latitude capped at -66° to keep house calculations stable.")
+
+    return latitude
+
+
+# =============================================================================
+# ANGULAR MATHEMATICS
+# =============================================================================
+
+
+def circular_mean(first_position: Union[int, float], second_position: Union[int, float]) -> float:
+    """
+    Calculate the circular mean of two angular positions.
+
+    This method correctly handles positions that cross the 0°/360° boundary,
+    avoiding errors that occur with simple arithmetic means.
+
+    Args:
+        first_position: First angular position in degrees (0-360)
+        second_position: Second angular position in degrees (0-360)
+
+    Returns:
+        The circular mean position in degrees (0-360)
     """
     x = (math.cos(math.radians(first_position)) + math.cos(math.radians(second_position))) / 2
     y = (math.sin(math.radians(first_position)) + math.sin(math.radians(second_position))) / 2
     mean_position = math.degrees(math.atan2(y, x))
 
-    # Ensure the result is within 0-360°
     if mean_position < 0:
         mean_position += 360
 
     return mean_position
 
 
-def calculate_moon_phase(moon_abs_pos: float, sun_abs_pos: float) -> LunarPhaseModel:
-    """
-    Calculate the lunar phase based on the positions of the moon and sun.
-
-    Args:
-    - moon_abs_pos (float): The absolute position of the moon.
-    - sun_abs_pos (float): The absolute position of the sun.
-
-    Returns:
-    - dict: A dictionary containing the lunar phase information.
-    """
-    # Initialize moon_phase and sun_phase to None in case of an error
-    moon_phase, sun_phase = None, None
-
-    # Calculate the anti-clockwise degrees between the sun and moon
-    degrees_between = (moon_abs_pos - sun_abs_pos) % 360
-
-    # Calculate the moon phase (1-28) based on the degrees between the sun and moon
-    step = 360.0 / 28.0
-    moon_phase = int(degrees_between // step) + 1
-
-    # Define the sun phase steps
-    sunstep = [
-        0, 30, 40, 50, 60, 70, 80, 90, 120, 130, 140, 150, 160, 170, 180,
-        210, 220, 230, 240, 250, 260, 270, 300, 310, 320, 330, 340, 350
-    ]
-
-    # Calculate the sun phase (1-28) based on the degrees between the sun and moon
-    for x in range(len(sunstep)):
-        low = sunstep[x]
-        high = sunstep[x + 1] if x < len(sunstep) - 1 else 360
-        if low <= degrees_between < high:
-            sun_phase = x + 1
-            break
-
-    # Create a dictionary with the lunar phase information
-    lunar_phase_dictionary = {
-        "degrees_between_s_m": degrees_between,
-        "moon_phase": moon_phase,
-        "sun_phase": sun_phase,
-        "moon_emoji": get_moon_emoji_from_phase_int(moon_phase),
-        "moon_phase_name": get_moon_phase_name_from_phase_int(moon_phase)
-    }
-
-    return LunarPhaseModel(**lunar_phase_dictionary)
-
-
 def circular_sort(degrees: list[Union[int, float]]) -> list[Union[int, float]]:
     """
-    Sort a list of degrees in a circular manner, starting from the first element
-    and progressing clockwise around the circle.
+    Sort degrees in circular clockwise progression starting from the first element.
 
     Args:
-        degrees: A list of numeric values representing degrees
+        degrees: List of numeric degree values
 
     Returns:
-        A list sorted based on circular clockwise progression from the first element
+        List sorted by clockwise distance from the first element
 
     Raises:
         ValueError: If the list is empty or contains non-numeric values
     """
-    # Input validation
     if not degrees:
         raise ValueError("Input list cannot be empty")
 
@@ -415,83 +549,226 @@ def circular_sort(degrees: list[Union[int, float]]) -> list[Union[int, float]]:
         invalid = next(d for d in degrees if not isinstance(d, (int, float)))
         raise ValueError(f"All elements must be numeric, found: {invalid} of type {type(invalid).__name__}")
 
-    # If list has 0 or 1 element, return it as is
     if len(degrees) <= 1:
         return degrees.copy()
 
-    # Save the first element as the reference
     reference = degrees[0]
 
-    # Define a function to calculate clockwise distance from reference
     def clockwise_distance(angle: Union[int, float]) -> Union[int, float]:
-        # Normalize angles to 0-360 range
         ref_norm = reference % 360
         angle_norm = angle % 360
-
-        # Calculate clockwise distance
         distance = angle_norm - ref_norm
         if distance < 0:
             distance += 360
-
         return distance
 
-    # Sort the rest of the elements based on circular distance
     remaining = degrees[1:]
     sorted_remaining = sorted(remaining, key=clockwise_distance)
 
-    # Return the reference followed by the sorted remaining elements
     return [reference] + sorted_remaining
+
+
+# =============================================================================
+# DATE/TIME UTILITIES
+# =============================================================================
+
+
+def datetime_to_julian(dt: datetime) -> float:
+    """
+    Convert a Python datetime object to Julian Day Number.
+
+    Args:
+        dt: The datetime object to convert
+
+    Returns:
+        The corresponding Julian Day Number (JD) as a float
+    """
+    year = dt.year
+    month = dt.month
+    day = dt.day
+
+    if month <= 2:
+        year -= 1
+        month += 12
+
+    a = year // 100
+    b = 2 - a + (a // 4)
+
+    jd = int(365.25 * (year + 4716)) + int(30.6001 * (month + 1)) + day + b - 1524.5
+
+    hour = dt.hour
+    minute = dt.minute
+    second = dt.second
+    microsecond = dt.microsecond
+
+    jd += (hour + minute / 60 + second / 3600 + microsecond / 3600000000) / 24
+
+    return jd
+
+
+def julian_to_datetime(jd: float) -> datetime:
+    """
+    Convert a Julian Day Number to a Python datetime object.
+
+    Args:
+        jd: Julian Day Number as a float
+
+    Returns:
+        The corresponding datetime object
+    """
+    jd_plus = jd + 0.5
+
+    Z = int(jd_plus)
+    F = jd_plus - Z
+
+    if Z < 2299161:
+        A = Z
+    else:
+        alpha = int((Z - 1867216.25) / 36524.25)
+        A = Z + 1 + alpha - int(alpha / 4)
+
+    B = A + 1524
+    C = int((B - 122.1) / 365.25)
+    D = int(365.25 * C)
+    E = int((B - D) / 30.6001)
+
+    day = B - D - int(30.6001 * E) + F
+    day_int = int(day)
+
+    day_frac = day - day_int
+    hours = int(day_frac * 24)
+    minutes = int((day_frac * 24 - hours) * 60)
+    seconds = int((day_frac * 24 * 60 - hours * 60 - minutes) * 60)
+    microseconds = int(((day_frac * 24 * 60 - hours * 60 - minutes) * 60 - seconds) * 1000000)
+
+    if E < 14:
+        month = E - 1
+    else:
+        month = E - 13
+
+    if month > 2:
+        year = C - 4716
+    else:
+        year = C - 4715
+
+    return datetime(year, month, day_int, hours, minutes, seconds, microseconds)
+
+
+# =============================================================================
+# SVG PROCESSING UTILITIES
+# =============================================================================
 
 
 def inline_css_variables_in_svg(svg_content: str) -> str:
     """
-    Process an SVG string to inline all CSS custom properties.
+    Replace CSS custom properties (variables) with their values in SVG content.
+
+    Extracts CSS variables from style blocks, replaces var() references with actual values,
+    and removes all style blocks from the SVG.
 
     Args:
-        svg_content (str): The original SVG string with CSS variables
+        svg_content: The original SVG string with CSS variables
 
     Returns:
-        str: The modified SVG with all CSS variables replaced by their values
-             and all style blocks removed
+        Modified SVG with CSS variables inlined and style blocks removed
     """
-    # Find and extract CSS custom properties from style tags
     css_variable_map = {}
     style_tag_pattern = re.compile(r"<style.*?>(.*?)</style>", re.DOTALL)
     style_blocks = style_tag_pattern.findall(svg_content)
 
-    # Parse all CSS custom properties from style blocks
     for style_block in style_blocks:
-        # Match patterns like --color-primary: #ff0000;
         css_variable_pattern = re.compile(r"--([a-zA-Z0-9_-]+)\s*:\s*([^;]+);")
         for match in css_variable_pattern.finditer(style_block):
             variable_name = match.group(1)
             variable_value = match.group(2).strip()
             css_variable_map[f"--{variable_name}"] = variable_value
 
-    # Remove all style blocks from the SVG
     svg_without_style_blocks = style_tag_pattern.sub("", svg_content)
 
-    # Function to replace var() references with their actual values
     def replace_css_variable_reference(match):
         variable_name = match.group(1).strip()
-        fallback_value = match.group(2) if match.group(2) else None
+        fallback_value = match.group(3) if match.group(3) else None
 
         if variable_name in css_variable_map:
             return css_variable_map[variable_name]
         elif fallback_value:
-            return fallback_value.strip(", ")
+            return fallback_value.strip()
         else:
-            return ""  # If variable not found and no fallback provided
+            return ""
 
-    # Pattern to match var(--name) or var(--name, fallback)
-    variable_usage_pattern = re.compile(r"var\(\s*(--([\w-]+))\s*(,\s*([^)]+))?\s*\)")
+    variable_usage_pattern = re.compile(r"var\(\s*(--[\w-]+)\s*(,\s*([^)]+))?\s*\)")
 
-    # Repeatedly replace all var() references until none remain
-    # This handles nested variables or variables that reference other variables
     processed_svg = svg_without_style_blocks
     while variable_usage_pattern.search(processed_svg):
-        processed_svg = variable_usage_pattern.sub(
-            lambda m: replace_css_variable_reference(m), processed_svg
-        )
+        processed_svg = variable_usage_pattern.sub(lambda m: replace_css_variable_reference(m), processed_svg)
 
     return processed_svg
+
+
+# =============================================================================
+# STATISTICAL UTILITIES
+# =============================================================================
+
+
+def distribute_percentages_to_100(values: dict[str, float]) -> dict[str, int]:
+    """
+    Distribute percentages so they sum to exactly 100.
+
+    This function uses a largest remainder method to ensure that
+    the percentage total equals 100 even after rounding.
+
+    Args:
+        values: Dictionary with keys and their raw percentage values
+
+    Returns:
+        Dictionary with the same keys and integer percentages that sum to 100
+    """
+    if not values:
+        return {}
+
+    total = sum(values.values())
+    if total == 0:
+        return {key: 0 for key in values.keys()}
+
+    percentages = {key: value * 100 / total for key, value in values.items()}
+    integer_parts = {key: int(value) for key, value in percentages.items()}
+    remainders = {key: percentages[key] - integer_parts[key] for key in percentages.keys()}
+
+    current_sum = sum(integer_parts.values())
+    needed = 100 - current_sum
+
+    sorted_by_remainder = sorted(remainders.items(), key=lambda x: x[1], reverse=True)
+
+    result = integer_parts.copy()
+    for i in range(needed):
+        if i < len(sorted_by_remainder):
+            key = sorted_by_remainder[i][0]
+            result[key] += 1
+
+    return result
+
+
+def calculate_moon_phase(moon_abs_pos: float, sun_abs_pos: float) -> LunarPhaseModel:
+    """
+    Calculate lunar phase information from Sun and Moon positions.
+
+    Args:
+        moon_abs_pos: Absolute position of the Moon in degrees
+        sun_abs_pos: Absolute position of the Sun in degrees
+
+    Returns:
+        LunarPhaseModel containing phase data, emoji, and name
+    """
+    # Calculate the anti-clockwise degrees between the sun and moon
+    degrees_between = (moon_abs_pos - sun_abs_pos) % 360
+
+    # Calculate the moon phase (1-28) based on the degrees between the sun and moon
+    step = 360.0 / 28.0
+    moon_phase = int(degrees_between // step) + 1
+
+    return LunarPhaseModel(
+        degrees_between_s_m=degrees_between,
+        moon_phase=moon_phase,
+        moon_emoji=get_moon_emoji_from_phase_int(moon_phase),
+        moon_phase_name=get_moon_phase_name_from_phase_int(moon_phase),
+    )

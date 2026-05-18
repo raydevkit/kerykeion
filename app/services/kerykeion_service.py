@@ -6,7 +6,10 @@ Handles creation of AstrologicalSubject instances and data extraction.
 """
 
 from typing import Dict, Any, List, Optional
-from kerykeion import AstrologicalSubject, SynastryAspects, CompositeSubjectFactory
+import warnings
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", DeprecationWarning)
+    from kerykeion import AstrologicalSubject, SynastryAspects, CompositeSubjectFactory
 from app.schemas.common import SubjectInput
 from app.core.config import settings as app_settings
 from app.utils.validators import normalize_house_system, normalize_zodiac_type

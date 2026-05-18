@@ -61,7 +61,11 @@ class ChartConfig(BaseModel):
     )
     theme: str = Field(
         default="light",
-        description="Chart theme: 'light', 'dark', 'classic', 'dark_high_contrast'"
+        description="Chart theme: 'light', 'dark', 'classic', 'dark_high_contrast', 'black-and-white', or 'strawberry'"
+    )
+    style: str = Field(
+        default="modern",
+        description="Chart SVG style: 'modern' (default) or 'classic'"
     )
     language: str = Field(
         default="EN",
@@ -74,6 +78,7 @@ class ChartConfig(BaseModel):
                 "zodiac_type": "Tropic",
                 "house_system": "Placidus",
                 "theme": "light",
+                "style": "modern",
                 "language": "EN"
             }
         }

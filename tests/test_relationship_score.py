@@ -15,33 +15,34 @@ class TestRelationshipScore:
         self.dario_fo = AstrologicalSubject("Dario Fo", 1926, 3, 24, 12, 25, "Sangiano", "IT")
         self.franca_rame = AstrologicalSubject("Franca Rame", 1929, 7, 18, 12, 25, "Parabiago", "IT")
 
-    def test_john_lennon_yoko_ono_relationship_score(self):
-        john_yoko_relationship_score_factory = RelationshipScoreFactory(self.john_lennon, self.yoko_ono)
-        john_yoko_relationship_score = john_yoko_relationship_score_factory.get_relationship_score()
+    def _make_factory(self, s1, s2):
+        m1 = s1.model() if hasattr(s1, 'model') else s1
+        m2 = s2.model() if hasattr(s2, 'model') else s2
+        return RelationshipScoreFactory(m1, m2)
 
-        assert john_yoko_relationship_score.score_description == "Very Important"
-        assert john_yoko_relationship_score.score_value == 16
+    def test_john_lennon_yoko_ono_relationship_score(self):
+        factory = self._make_factory(self.john_lennon, self.yoko_ono)
+        score = factory.get_relationship_score()
+        assert score.score_description == "Important"
+        assert score.score_value == 12
 
     def test_freud_jung_relationship_score(self):
-        freud_jung_relationship_score_factory = RelationshipScoreFactory(self.freud, self.jung)
-        freud_jung_relationship_score = freud_jung_relationship_score_factory.get_relationship_score()
-        
-        assert freud_jung_relationship_score.score_description == "Rare Exceptional"
-        assert freud_jung_relationship_score.score_value == 32
+        factory = self._make_factory(self.freud, self.jung)
+        score = factory.get_relationship_score()
+        assert score.score_description == "Rare Exceptional"
+        assert score.score_value == 32
 
     def test_richart_burton_liz_taylor_relationship_score(self):
-        burton_taylor_relationship_score_factory = RelationshipScoreFactory(self.richart_burton, self.liz_taylor)
-        burton_taylor_relationship_score = burton_taylor_relationship_score_factory.get_relationship_score()
-
-        assert burton_taylor_relationship_score.score_description == "Exceptional"
-        assert burton_taylor_relationship_score.score_value == 23
+        factory = self._make_factory(self.richart_burton, self.liz_taylor)
+        score = factory.get_relationship_score()
+        assert score.score_description == "Exceptional"
+        assert score.score_value == 23
 
     def test_dario_franca_relationship_score(self):
-        dario_franca_relationship_score_factory = RelationshipScoreFactory(self.dario_fo, self.franca_rame)
-        dario_franca_relationship_score = dario_franca_relationship_score_factory.get_relationship_score()
-
-        assert dario_franca_relationship_score.score_description == "Important"
-        assert dario_franca_relationship_score.score_value == 13
+        factory = self._make_factory(self.dario_fo, self.franca_rame)
+        score = factory.get_relationship_score()
+        assert score.score_description == "Important"
+        assert score.score_value == 13
 
 if __name__ == "__main__":
     import pytest

@@ -1,78 +1,86 @@
-[tool.poetry]
+[project]
 name = "kerykeion"
-version = "4.26.3"
-authors = ["Giacomo Battaglia <kerykeion.astrology@gmail.com>"]
-description = "A python library for astrology."
-license = "AGPL-3.0"
-homepage = "https://www.kerykeion.net/"
-repository = "https://github.com/g-battaglia/kerykeion"
+version = "5.12.8"
+authors = [
+    { name = "Giacomo Battaglia", email = "kerykeion.astrology@gmail.com" }
+]
+description = "A Python library for astrological calculations, including natal charts, houses, planetary aspects, and SVG chart generation."
+license = { text = "AGPL-3.0" }
+readme = "README.md"
 keywords = [
     "astrology",
-    "ephemeris",
     "astrology library",
-    "birtchart",
-    "svg",
+    "astrology calculations",
+    "astrology calculator",
+    "natal chart",
+    "birth chart",
+    "planetary aspects",
+    "astrology transits",
+    "houses of astrology",
+    "ephemeris",
     "zodiac",
-    "zodiac-sing",
-    "astronomical-algorithms",
+    "zodiac signs",
+    "svg charts",
     "synastry",
-    "astrology-calculator",
+    "astronomical algorithms"
 ]
-readme = "README.md"
-include = ["LICENSE"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Information Technology",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: GNU General Public License (GPL)",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Software Development :: Libraries",
     "Topic :: Software Development",
     "Topic :: Scientific/Engineering :: Astronomy",
+    "Topic :: Scientific/Engineering :: Visualization",
+    "Topic :: Religion",
     "Typing :: Typed",
 ]
+requires-python = ">=3.9"
+dependencies = [
+    "pyswisseph>=2.10.3.1",
+    "pydantic>=2.5",
+    "scour>=0.38.2",
+    "requests-cache>=1.2.1",
+    "requests>=2.32.3",
+    "simple-ascii-tables>=1.0.0",
+    "pytz>=2024.2",
+    "typing-extensions>=4.12.2",
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic-settings>=2.1.0",
+    "python-dotenv>=1.0.0",
+    "python-multipart>=0.0.6",
+]
 
-# To include Kerykeion itself
-packages = [{ include = "kerykeion" }]
+[project.urls]
+Homepage = "https://www.kerykeion.net/"
+Repository = "https://github.com/g-battaglia/kerykeion"
 
-[tool.poetry.dependencies]
-python = "^3.9"
-pyswisseph = "^2.10.3.1"
-pydantic = "^2.5"
-scour = "^0.38.2"
-requests-cache = "^1.2.1"
-requests = "^2.32.3"
-simple-ascii-tables = "^1.0.0"
-pytz = "^2024.2"
-typing-extensions = "^4.12.2"
-# FastAPI Microservice Dependencies
-fastapi = "^0.109.0"
-uvicorn = {extras = ["standard"], version = "^0.27.0"}
-pydantic-settings = "^2.1.0"
-python-dotenv = "^1.0.0"
-python-multipart = "^0.0.6"
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.poetry.scripts]
-create-docs = "scripts.docs:main"
-dev-server = "scripts.dev:main"
-start-server = "scripts.start:main"
+[tool.hatch.build.targets.wheel]
+packages = ["kerykeion"]
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^7.2.0"
-mypy = "^0.991"
-black = "^24.4.2"
-pdoc = "^14.5.0"
-types-requests = "^2.28.11.7"
-types-pytz = "^2022.7.0.0"
-poethepoet = "^0.19.0"
-# FastAPI Testing Dependencies
-pytest-asyncio = "^0.21.1"
-httpx = "^0.26.0"
+[tool.hatch.build.targets.sdist]
+include = [
+    "/kerykeion",
+    "/README.md",
+    "/LICENSE",
+    "/pyproject.toml",
+    "/MANIFEST.in",
+]
 
 # MyPy Static Analysis
 [tool.mypy]
@@ -83,32 +91,224 @@ files = "kerykeion"
 # PyTest Automated Testing
 [tool.pytest.ini_options]
 log_cli_level = 20
-
-log_cli = "True"
+log_cli = true
 testpaths = "tests"
-
 log_level = 20
 log_date_format = "%Y-%m-%d %H:%M:%S"
 log_format = "%(asctime)s %(levelname)s %(message)s"
+addopts = "-n 8"
+markers = [
+    "online: tests requiring network access (GeoNames API)",
+    "core: hand-written essential tests with known values",
+    "base: DE440s tier (1849-2150)",
+    "medium: DE440 tier (1550-2650, cumulative)",
+    "extended: DE441 tier (full range, cumulative)",
+]
 
-# Black Code Formatter
-[tool.black]
-line-length = 120
+# Coverage Configuration
+[tool.coverage.run]
+source = ["kerykeion"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/sweph/*",  # Swiss Ephemeris library files
+    "setup.py",
+    "**/draw_planets_legacy.py",  # Legacy code, not used
+    "kerykeion/charts/draw_planets_legacy.py",  # Legacy code, not used
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+show_missing = true
+skip_covered = false
+precision = 2
+
+[tool.coverage.html]
+directory = "htmlcov"
 
 # Task Runner
 [tool.poe.tasks]
-# Testing
-test = "pytest"
-test-no-capture = "pytest --show-capture no  "
-test-nocharts = "pytest --ignore-glob='*chart*.py'"
+# Test — 4 levels, hierarchy: core < base < medium < extended
+"test:core" = "pytest tests/core/ -m 'not online' --ignore=tests/core/test_houses_positions.py --ignore=tests/core/test_planetary_positions.py --ignore=tests/core/test_moon_phase_historical_verification.py --ignore=tests/core/test_subject_factory_parametrized.py --ignore=tests/core/test_chart_parametrized.py"
+"test:base" = "pytest tests/ --tier=base -m 'not online'"
+"test:medium" = "pytest tests/ --tier=medium -m 'not online'"
+"test:extended" = "pytest tests/ -m 'not online'"
+
+# Coverage — same tiers with coverage report (terminal + HTML in htmlcov/)
+"test:core:cov" = "pytest tests/core/ -m 'not online' --ignore=tests/core/test_houses_positions.py --ignore=tests/core/test_planetary_positions.py --ignore=tests/core/test_moon_phase_historical_verification.py --ignore=tests/core/test_subject_factory_parametrized.py --ignore=tests/core/test_chart_parametrized.py --cov --cov-report=term-missing --cov-report=html"
+"test:base:cov" = "pytest tests/ --tier=base -m 'not online' --cov --cov-report=term-missing --cov-report=html"
+"test:medium:cov" = "pytest tests/ --tier=medium -m 'not online' --cov --cov-report=term-missing --cov-report=html"
+"test:extended:cov" = "pytest tests/ -m 'not online' --cov --cov-report=term-missing --cov-report=html"
 
 # Code Quality
-analize = "mypy"
-docs = "pdoc kerykeion -o ./docs"
-format = "black --line-length 120"
-"format:all" = "black kerykeion tests --line-length 120"
+lint = "ruff check"
+format = "ruff format"
+"format:all" = "ruff format kerykeion tests"
+analyze = "mypy"
+typecheck = "pyright"
 
-# Server Commands (NEW)
-dev = "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
-start = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
-"start:prod" = "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4"
+[tool.poe.tasks.check]
+sequence = ["lint", "analyze", "typecheck", "test:core"]
+help = "Run all quality checks (lint, analyze, typecheck, test:core)"
+
+[tool.poe.tasks.quality]
+script = "scripts.quality_check:main"
+help = "Run quality check script"
+
+# Documentation
+[tool.poe.tasks.docs]
+cmd = "pdoc kerykeion -o ./docs"
+help = "Generate API documentation"
+
+[tool.poe.tasks."docs:check"]
+cmd = "python scripts/check_documentation_coverage.py"
+help = "Audit documentation coverage"
+
+[tool.poe.tasks."docs:snippets"]
+cmd = "python scripts/test_markdown_snippets.py"
+help = "Test Python snippets in markdown files"
+
+# Regenerate Golden Standards — one command per category
+[tool.poe.tasks."regenerate:svg"]
+sequence = ["regenerate:svg:base", "regenerate:svg:extended", "regenerate:svg:modern"]
+help = "Regenerate all SVG chart baselines (tests/data/svg/)"
+
+[tool.poe.tasks."regenerate:svg:base"]
+cmd = "python scripts/regenerate_test_charts.py"
+
+[tool.poe.tasks."regenerate:svg:extended"]
+cmd = "python scripts/regenerate_test_charts_extended.py"
+
+[tool.poe.tasks."regenerate:svg:modern"]
+cmd = "python scripts/generate_modern_baselines.py"
+
+[tool.poe.tasks."regenerate:reports"]
+sequence = ["regenerate:reports:snapshots", "regenerate:reports:output"]
+help = "Regenerate all report golden files (tests/fixtures/)"
+
+[tool.poe.tasks."regenerate:reports:snapshots"]
+cmd = "python scripts/regenerate_report_snapshots.py"
+
+[tool.poe.tasks."regenerate:reports:output"]
+cmd = "python scripts/regenerate_test_output.py"
+
+[tool.poe.tasks."regenerate:positions"]
+cmd = "python scripts/regenerate_all.py --positions --subjects"
+help = "Regenerate expected positions and subjects (tests/data/expected_positions.py, expected_astrological_subjects.py)"
+
+[tool.poe.tasks."regenerate:aspects"]
+sequence = ["regenerate:aspects:natal", "regenerate:aspects:synastry", "regenerate:aspects:matrix"]
+help = "Regenerate all expected aspects (tests/data/expected_*_aspects.py)"
+
+[tool.poe.tasks."regenerate:aspects:natal"]
+cmd = "python scripts/regenerate_expected_aspects.py"
+
+[tool.poe.tasks."regenerate:aspects:synastry"]
+cmd = "python scripts/regenerate_synastry_aspects.py"
+
+[tool.poe.tasks."regenerate:aspects:matrix"]
+cmd = "python scripts/regenerate_all.py --aspects"
+
+[tool.poe.tasks."regenerate:all"]
+sequence = ["regenerate:svg", "regenerate:reports", "regenerate:positions", "regenerate:aspects"]
+help = "Regenerate all golden standards"
+
+# Utilities
+[tool.poe.tasks.clean]
+cmd = "rm -rf dist build *.egg-info htmlcov .coverage .coverage.* coverage.xml .pytest_cache .mypy_cache .ruff_cache"
+help = "Clean build artifacts and caches"
+
+[tool.poe.tasks.dev]
+cmd = "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+help = "Start FastAPI dev server with hot reload"
+
+[tool.poe.tasks.start]
+cmd = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+help = "Start FastAPI production server"
+
+[tool.poe.tasks."start:prod"]
+cmd = "uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4"
+help = "Start FastAPI production server with 4 workers"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# Enable pyflakes (F) and pycodestyle (E, W) rules
+select = [
+    "F",      # Pyflakes - logic errors, undefined names, unused imports
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+]
+
+# Ignore rules that conflict with project structure
+ignore = [
+    "E402",   # Module level import not at top of file (needed for some modules)
+    "E501",   # Line too long (handled by line-length setting)
+    "E731",   # Do not assign a lambda expression, use a def (stylistic choice)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Backward compatibility module uses import * intentionally
+"kerykeion/backword.py" = ["F405", "F403", "F401"]
+# Settings re-exports symbols intentionally
+"kerykeion/settings/__init__.py" = ["F401", "F403"]
+# Schemas re-exports for public API
+"kerykeion/schemas/__init__.py" = ["F401", "F403"]
+# Types re-exports for public API
+"kerykeion/kr_types/__init__.py" = ["F405", "F403", "F401"]
+
+# Pyright Static Type Checking
+[tool.pyright]
+include = ["kerykeion"]
+exclude = [
+    "tests",
+    "examples",
+    "workspace",
+    "scripts",
+    "**/__pycache__",
+    ".venv",
+    "dist",
+    "build",
+    "*.egg-info"
+]
+typeCheckingMode = "basic"
+pythonVersion = "3.9"
+pythonPlatform = "All"
+venvPath = "."
+venv = ".venv"
+reportOptionalMemberAccess = "none"
+reportIncompatibleVariableOverride = "none"
+reportArgumentType = "none"
+reportInvalidTypeForm = "error"
+reportAttributeAccessIssue = "error"
+reportGeneralTypeIssues = "none"
+
+[dependency-groups]
+dev = [
+    "coverage>=7.6.0",
+    "mypy>=1.17.1",
+    "pdoc>=15.0.4",
+    "poethepoet>=0.36.0",
+    "pyright>=1.1.408",
+    "pytest>=8.4.1",
+    "pytest-cov>=6.0.0",
+    "pytest-xdist>=3.5.0",
+    "ruff>=0.12.9",
+    "types-pytz>=2025.2.0.20250516",
+    "types-requests>=2.32.4.20250611",
+    "httpx>=0.26.0",
+    "pytest-asyncio>=0.21.1",
+]

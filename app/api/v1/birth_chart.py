@@ -43,7 +43,8 @@ async def generate_birth_chart(
         svg_content = generate_birth_chart_svg(
             subject,
             theme=request.config.theme,
-            language=request.config.language
+            language=request.config.language,
+            style=request.config.style,
         )
 
         # Get chart data

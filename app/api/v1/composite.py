@@ -48,7 +48,8 @@ async def generate_composite_chart(
         svg_content = generate_composite_chart_svg(
             composite_subject,
             theme=request.config.theme,
-            language=request.config.language
+            language=request.config.language,
+            style=request.config.style,
         )
 
         # Get composite data

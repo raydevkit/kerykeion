@@ -66,6 +66,14 @@ def calculate_relationship_score(subject_one: AstrologicalSubject, subject_two: 
             'growth': 0,         # Jupiter, Saturn
             'spiritual': 0,      # Neptune, Pluto, Chiron
         }
+        category_max_scores = {
+            'emotional': 0,
+            'communication': 0,
+            'love': 0,
+            'passion': 0,
+            'growth': 0,
+            'spiritual': 0,
+        }
 
         for aspect in aspects:
             aspect_type = aspect.get('aspect', '').lower()
@@ -90,6 +98,7 @@ def calculate_relationship_score(subject_one: AstrologicalSubject, subject_two: 
             category = _categorize_aspect(planet1, planet2)
             if category:
                 category_scores[category] += weighted_score
+                category_max_scores[category] += abs(10 * avg_weight)
 
         # Normalize to 0-100 scale
         if max_possible_score > 0:
@@ -100,11 +109,14 @@ def calculate_relationship_score(subject_one: AstrologicalSubject, subject_two: 
         # Get rating description
         rating = _get_compatibility_rating(percentage)
 
-        # Normalize category scores to 0-100
+        # Normalize category scores using per-category denominator
         normalized_categories = {}
         for category, score in category_scores.items():
-            # Simple normalization
-            normalized_score = max(0, min(100, (score * 5) + 50))
+            cat_max = category_max_scores[category]
+            if cat_max > 0:
+                normalized_score = max(0, min(100, ((score / cat_max) * 50) + 50))
+            else:
+                normalized_score = 50.0
             normalized_categories[category] = round(normalized_score, 1)
 
         return {

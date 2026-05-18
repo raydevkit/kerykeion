@@ -155,9 +155,62 @@ class GeometryInfo(BaseModel):
     sun_phase: int = Field(..., description="Sun phase indicator")
 
 
+class UpcomingPhaseEvent(BaseModel):
+    """A single lunar phase event (last or next occurrence)"""
+
+    timestamp: Optional[int] = Field(None, description="Unix timestamp")
+    datestamp: Optional[str] = Field(None, description="Human-readable date")
+    days_ago: Optional[int] = Field(None, description="Days since last occurrence")
+    days_ahead: Optional[int] = Field(None, description="Days until next occurrence")
+
+
+class UpcomingPhaseWindow(BaseModel):
+    """Last and next occurrences of a major lunar phase"""
+
+    last: Optional[UpcomingPhaseEvent] = Field(None, description="Last occurrence")
+    next: Optional[UpcomingPhaseEvent] = Field(None, description="Next occurrence")
+
+
+class UpcomingPhasesInfo(BaseModel):
+    """Surrounding major lunar phases computed via Swiss Ephemeris"""
+
+    new_moon: Optional[UpcomingPhaseWindow] = Field(None, description="New Moon window")
+    first_quarter: Optional[UpcomingPhaseWindow] = Field(None, description="First Quarter window")
+    full_moon: Optional[UpcomingPhaseWindow] = Field(None, description="Full Moon window")
+    last_quarter: Optional[UpcomingPhaseWindow] = Field(None, description="Last Quarter window")
+
+
+class SunSkyPosition(BaseModel):
+    """Apparent Sun position in the sky"""
+
+    altitude: Optional[float] = Field(None, description="Altitude above horizon in degrees")
+    azimuth: Optional[float] = Field(None, description="Azimuth in degrees")
+    distance: Optional[float] = Field(None, description="Distance in kilometers")
+
+
+class SunInfoDetails(BaseModel):
+    """Sun-related contextual information"""
+
+    sunrise: Optional[int] = Field(None, description="Sunrise Unix timestamp")
+    sunrise_time: Optional[str] = Field(None, description="Sunrise local time (HH:MM)")
+    sunset: Optional[int] = Field(None, description="Sunset Unix timestamp")
+    sunset_time: Optional[str] = Field(None, description="Sunset local time (HH:MM)")
+    solar_noon: Optional[str] = Field(None, description="Solar noon local time (HH:MM)")
+    day_length: Optional[str] = Field(None, description="Day length (H:MM)")
+    sky_position: Optional[SunSkyPosition] = Field(None, description="Apparent Sun position")
+
+
+class EclipseInfo(BaseModel):
+    """Information about an upcoming eclipse"""
+
+    timestamp: Optional[int] = Field(None, description="Eclipse Unix timestamp")
+    datestamp: Optional[str] = Field(None, description="Human-readable date")
+    type: Optional[str] = Field(None, description="Eclipse type description")
+
+
 class MoonPhaseResponse(BaseModel):
     """Response schema for detailed moon phase information"""
-    
+
     timestamp: str = Field(..., description="Current timestamp (UTC)")
     location: Dict[str, Any] = Field(..., description="Location data")
     phase: MoonPhaseInfo = Field(..., description="Current phase information")
@@ -166,6 +219,19 @@ class MoonPhaseResponse(BaseModel):
     moon_position: MoonPositionInfo = Field(..., description="Moon's zodiac position")
     sun_position: SunPositionInfo = Field(..., description="Sun's zodiac position")
     geometry: GeometryInfo = Field(..., description="Sun-Moon geometry")
+
+    upcoming_phases: Optional[UpcomingPhasesInfo] = Field(
+        None, description="Precise last/next occurrences of major phases (Swiss Ephemeris)"
+    )
+    sun_info: Optional[SunInfoDetails] = Field(
+        None, description="Sunrise, sunset, solar noon, day length, and sky position"
+    )
+    next_solar_eclipse: Optional[EclipseInfo] = Field(
+        None, description="Next global solar eclipse"
+    )
+    next_lunar_eclipse: Optional[EclipseInfo] = Field(
+        None, description="Next global lunar eclipse"
+    )
 
 
 class CurrentSkyResponse(BaseModel):

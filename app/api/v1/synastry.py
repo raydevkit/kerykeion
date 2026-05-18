@@ -46,7 +46,8 @@ async def generate_synastry_chart(
             subject_one,
             subject_two,
             theme=request.config.theme,
-            language=request.config.language
+            language=request.config.language,
+            style=request.config.style,
         )
 
         # Get synastry aspects

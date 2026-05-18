@@ -4,10 +4,16 @@ Calculation Service
 Helper functions for astrological calculations and data processing.
 """
 
-from typing import Dict, Any
-from datetime import datetime
+from typing import Dict, Any, Optional
+from datetime import datetime, timedelta, timezone as datetime_timezone
 import math
 from kerykeion import AstrologicalSubject
+from kerykeion.astrological_subject_factory import AstrologicalSubjectFactory
+from kerykeion.moon_phase_details.factory import (
+    MoonPhaseDetailsFactory,
+    SYNODIC_MONTH_DAYS,
+    _compute_major_phase_name,
+)
 from app.schemas.common import SubjectInput
 from app.core.config import settings as app_settings
 from app.services.kerykeion_service import (
@@ -168,21 +174,24 @@ def calculate_element_distribution(subject: AstrologicalSubject) -> Dict[str, in
 
 def get_detailed_moon_phase(timezone: str = "UTC", longitude: float = 0.0, latitude: float = 0.0) -> Dict[str, Any]:
     """
-    Get detailed moon phase information.
-    
+    Get detailed moon phase information using Kerykeion v5 MoonPhaseDetailsFactory.
+
+    Uses precise Swiss Ephemeris calculations via MoonPhaseDetailsFactory for
+    phase timings, eclipses, and sun position while preserving the existing
+    API response shape for backwards compatibility.
+
     Args:
         timezone: Timezone string (default: UTC)
         longitude: Longitude for location (default: 0.0)
         latitude: Latitude for location (default: 0.0)
-        
+
     Returns:
-        Dictionary with comprehensive moon phase data
+        Dictionary with comprehensive moon phase data (existing shape + optional richer fields)
     """
     try:
         now = datetime.utcnow()
-        
-        # Create a subject for the current moment
-        current_subject = AstrologicalSubject(
+
+        subject = AstrologicalSubjectFactory.from_birth_data(
             name="Moon Phase",
             year=now.year,
             month=now.month,
@@ -193,95 +202,286 @@ def get_detailed_moon_phase(timezone: str = "UTC", longitude: float = 0.0, latit
             lat=latitude,
             tz_str=timezone,
             city="Moon Phase",
-            geonames_username=app_settings.GEONAMES_USERNAME
+            online=False,
+            suppress_geonames_warning=True,
         )
-        
-        # Get lunar phase data
-        lp = current_subject.lunar_phase
-        moon = current_subject.moon
-        sun = current_subject.sun
-        
-        # Calculate values
-        degrees_between = lp.get('degrees_between_s_m', 0)
-        moon_phase_day = lp.get('moon_phase', 0)
-        
-        # Calculate illumination using cosine formula
+
+        overview = MoonPhaseDetailsFactory.from_subject(
+            subject,
+            using_default_location=(longitude == 0.0 and latitude == 0.0),
+        )
+
+        moon_summary = overview.moon
+        sun_info = overview.sun
+
+        lunar_phase = subject.lunar_phase
+        moon_point = subject.moon
+        sun_point = subject.sun
+
+        degrees_between = float(lunar_phase.degrees_between_s_m)
+        moon_phase_day = int(lunar_phase.moon_phase)
+
         illumination = (1 - math.cos(math.radians(degrees_between))) / 2 * 100
-        
-        # Calculate moon age with decimal precision
-        synodic_month = 29.53059  # Average synodic month in days
-        moon_age = degrees_between / 360 * synodic_month
-        
-        # Determine if waxing or waning
         is_waxing = degrees_between < 180
-        
-        # Calculate days until next phase
-        # Each major phase is ~7.38 days apart
-        phase_length = synodic_month / 4
-        days_into_current_phase = moon_age % phase_length
-        days_until_next_phase = phase_length - days_into_current_phase
-        
-        # Determine next phase
-        phase_names = ['New Moon', 'First Quarter', 'Full Moon', 'Last Quarter']
-        current_phase_index = int(moon_age / phase_length) % 4
-        next_phase_index = (current_phase_index + 1) % 4
-        next_phase = phase_names[next_phase_index]
-        
-        # Moon sign data
-        moon_sign = moon.get('sign', '')
-        moon_position = moon.get('position', 0)
-        moon_abs_pos = moon.get('abs_pos', 0)
-        moon_element = moon.get('element', '')
-        moon_quality = moon.get('quality', '')
-        
-        # Sun position for reference
-        sun_sign = sun.get('sign', '')
-        sun_position = sun.get('position', 0)
-        
-        return {
+
+        phase_fraction = degrees_between / 360.0
+        age_days_precise = phase_fraction * SYNODIC_MONTH_DAYS
+        percent_complete = round(phase_fraction * 100, 1)
+
+        phase_windows = _compute_phase_windows_from_elongation(now, degrees_between)
+        next_phase_name, days_until_next = _compute_next_phase_from_windows(phase_windows)
+
+        result: Dict[str, Any] = {
             'timestamp': now.isoformat() + 'Z',
             'location': {
                 'longitude': longitude,
                 'latitude': latitude,
-                'timezone': timezone
+                'timezone': timezone,
             },
             'phase': {
-                'name': lp.get('moon_phase_name', ''),
-                'emoji': lp.get('moon_emoji', ''),
+                'name': moon_summary.phase_name or lunar_phase.moon_phase_name,
+                'emoji': lunar_phase.moon_emoji,
                 'illumination': round(illumination, 1),
                 'is_waxing': is_waxing,
             },
             'age': {
-                'days': round(moon_age, 2),
+                'days': round(age_days_precise, 2),
                 'phase_day': moon_phase_day,
-                'synodic_month': synodic_month,
-                'percent_complete': round((moon_age / synodic_month) * 100, 1),
+                'synodic_month': SYNODIC_MONTH_DAYS,
+                'percent_complete': percent_complete,
             },
             'next_phase': {
-                'name': next_phase,
-                'days_until': round(days_until_next_phase, 1),
+                'name': next_phase_name,
+                'days_until': round(days_until_next, 1),
             },
             'moon_position': {
-                'sign': moon_sign,
-                'sign_emoji': moon.get('emoji', ''),
-                'degree': round(moon_position, 2),
-                'abs_degree': round(moon_abs_pos, 2),
-                'element': moon_element,
-                'quality': moon_quality,
+                'sign': moon_point.sign,
+                'sign_emoji': moon_point.emoji,
+                'degree': round(moon_point.position, 2),
+                'abs_degree': round(moon_point.abs_pos, 2),
+                'element': moon_point.element,
+                'quality': moon_point.quality,
             },
             'sun_position': {
-                'sign': sun_sign,
-                'degree': round(sun_position, 2),
+                'sign': sun_point.sign,
+                'degree': round(sun_point.position, 2),
             },
             'geometry': {
                 'elongation': round(degrees_between, 2),
-                'sun_phase': lp.get('sun_phase', 0),
-            }
+                'sun_phase': 0,
+            },
         }
-        
+
+        _enrich_with_optional_fields(result, overview, sun_info, phase_windows)
+
+        return result
+
     except Exception as e:
         logger.error(f"Error calculating moon phase: {str(e)}")
         raise
+
+
+def _compute_next_phase_from_windows(phase_windows: Dict[str, Any]) -> tuple:
+    phase_names = {
+        'new_moon': 'New Moon',
+        'first_quarter': 'First Quarter',
+        'full_moon': 'Full Moon',
+        'last_quarter': 'Last Quarter',
+    }
+    best_key = None
+    best_days = float('inf')
+
+    for key, window in phase_windows.items():
+        next_event = window.get('next') if window else None
+        days_ahead = next_event.get('days_ahead') if next_event else None
+        if days_ahead is not None and 0 < days_ahead < best_days:
+            best_days = float(days_ahead)
+            best_key = key
+
+    if best_key is None:
+        return 'New Moon', SYNODIC_MONTH_DAYS
+
+    return phase_names[best_key], best_days
+
+
+def _compute_phase_windows_from_elongation(now: datetime, degrees_between: float) -> Dict[str, Any]:
+    if now.tzinfo is None:
+        base_dt = now.replace(tzinfo=datetime_timezone.utc)
+    else:
+        base_dt = now.astimezone(datetime_timezone.utc)
+
+    phase_targets = {
+        'new_moon': 0.0,
+        'first_quarter': 90.0,
+        'full_moon': 180.0,
+        'last_quarter': 270.0,
+    }
+
+    windows = {}
+    for key, target in phase_targets.items():
+        days_since = ((degrees_between - target) % 360.0) / 360.0 * SYNODIC_MONTH_DAYS
+        days_until = ((target - degrees_between) % 360.0) / 360.0 * SYNODIC_MONTH_DAYS
+
+        if days_since == 0:
+            days_since = SYNODIC_MONTH_DAYS
+        if days_until == 0:
+            days_until = SYNODIC_MONTH_DAYS
+
+        last_dt = base_dt - timedelta(days=days_since)
+        next_dt = base_dt + timedelta(days=days_until)
+        windows[key] = {
+            'last': _serialize_phase_event(last_dt, base_dt, is_past=True),
+            'next': _serialize_phase_event(next_dt, base_dt, is_past=False),
+        }
+
+    return windows
+
+
+def _serialize_phase_event(event_dt: datetime, reference_dt: datetime, is_past: bool) -> Dict[str, Any]:
+    event_dt = event_dt.astimezone(datetime_timezone.utc)
+    reference_dt = reference_dt.astimezone(datetime_timezone.utc)
+    days_diff = abs((reference_dt - event_dt).total_seconds()) / 86400.0
+    event = {
+        'timestamp': int(event_dt.timestamp()),
+        'datestamp': event_dt.strftime("%a, %d %b %Y %H:%M:%S %z"),
+    }
+    if is_past:
+        event['days_ago'] = round(days_diff, 1)
+    else:
+        event['days_ahead'] = round(days_diff, 1)
+    return event
+
+
+def _compute_next_phase(overview) -> tuple:
+    """
+    Compute the next upcoming major phase and days until it using precise
+    Swiss Ephemeris data from the MoonPhaseDetailsFactory overview model.
+
+    Returns:
+        (phase_name, days_until) tuple
+    """
+    detailed = overview.moon.detailed if overview.moon else None
+    if detailed is None or detailed.upcoming_phases is None:
+        return _compute_next_phase_approx(overview)
+
+    upcoming = detailed.upcoming_phases
+    phases = [
+        ("New Moon", upcoming.new_moon),
+        ("First Quarter", upcoming.first_quarter),
+        ("Full Moon", upcoming.full_moon),
+        ("Last Quarter", upcoming.last_quarter),
+    ]
+
+    best_name = None
+    best_days = float('inf')
+    for name, window in phases:
+        if window is None or window.next is None:
+            continue
+        days_ahead = window.next.days_ahead
+        if days_ahead is not None and 0 < days_ahead < best_days:
+            best_days = days_ahead
+            best_name = name
+
+    if best_name is not None:
+        return best_name, float(best_days)
+
+    return _compute_next_phase_approx(overview)
+
+
+def _compute_next_phase_approx(overview) -> tuple:
+    """
+    Fallback: approximate next phase from current phase fraction.
+    """
+    phase_frac = overview.moon.phase if overview.moon and overview.moon.phase is not None else 0.0
+    phase_length = SYNODIC_MONTH_DAYS / 4
+    current_index = int(phase_frac * 4) % 4
+    next_index = (current_index + 1) % 4
+    names = ["New Moon", "First Quarter", "Full Moon", "Last Quarter"]
+    days_into = (phase_frac * SYNODIC_MONTH_DAYS) % phase_length
+    days_until = phase_length - days_into
+    return names[next_index], max(0.1, days_until)
+
+
+def _enrich_with_optional_fields(
+    result: Dict[str, Any],
+    overview,
+    sun_info,
+    phase_windows: Optional[Dict[str, Any]] = None,
+) -> None:
+    """
+    Add optional richer fields from the factory overview to the result dict.
+    All fields are additive and optional — existing consumers are unaffected.
+    """
+    detailed = overview.moon.detailed if overview.moon else None
+
+    if phase_windows is not None:
+        result['upcoming_phases'] = phase_windows
+    elif detailed is not None and detailed.upcoming_phases is not None:
+        up = detailed.upcoming_phases
+        result['upcoming_phases'] = {
+            'new_moon': _serialize_phase_window(up.new_moon),
+            'first_quarter': _serialize_phase_window(up.first_quarter),
+            'full_moon': _serialize_phase_window(up.full_moon),
+            'last_quarter': _serialize_phase_window(up.last_quarter),
+        }
+
+    if sun_info is not None:
+        sun_data: Dict[str, Any] = {}
+        if sun_info.sunrise is not None:
+            sun_data['sunrise'] = sun_info.sunrise
+        if sun_info.sunrise_timestamp is not None:
+            sun_data['sunrise_time'] = sun_info.sunrise_timestamp
+        if sun_info.sunset is not None:
+            sun_data['sunset'] = sun_info.sunset
+        if sun_info.sunset_timestamp is not None:
+            sun_data['sunset_time'] = sun_info.sunset_timestamp
+        if sun_info.solar_noon is not None:
+            sun_data['solar_noon'] = sun_info.solar_noon
+        if sun_info.day_length is not None:
+            sun_data['day_length'] = sun_info.day_length
+        if sun_info.position is not None:
+            sun_data['sky_position'] = {
+                'altitude': sun_info.position.altitude,
+                'azimuth': sun_info.position.azimuth,
+                'distance': sun_info.position.distance,
+            }
+        if sun_info.next_solar_eclipse is not None:
+            eclipse = sun_info.next_solar_eclipse
+            result['next_solar_eclipse'] = {
+                'timestamp': eclipse.timestamp,
+                'datestamp': eclipse.datestamp,
+                'type': eclipse.type,
+            }
+        if sun_data:
+            result['sun_info'] = sun_data
+
+    if overview.moon and overview.moon.next_lunar_eclipse is not None:
+        eclipse = overview.moon.next_lunar_eclipse
+        result['next_lunar_eclipse'] = {
+            'timestamp': eclipse.timestamp,
+            'datestamp': eclipse.datestamp,
+            'type': eclipse.type,
+        }
+
+
+def _serialize_phase_window(window) -> Optional[Dict[str, Any]]:
+    """Serialize a MoonPhaseMajorPhaseWindowModel to a plain dict."""
+    if window is None:
+        return None
+    result: Dict[str, Any] = {}
+    if window.last is not None:
+        result['last'] = {
+            'timestamp': window.last.timestamp,
+            'datestamp': window.last.datestamp,
+            'days_ago': window.last.days_ago,
+        }
+    if window.next is not None:
+        result['next'] = {
+            'timestamp': window.next.timestamp,
+            'datestamp': window.next.datestamp,
+            'days_ahead': window.next.days_ahead,
+        }
+    return result if result else None
 
 
 def calculate_quality_distribution(subject: AstrologicalSubject) -> Dict[str, int]:

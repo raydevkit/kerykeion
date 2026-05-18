@@ -46,7 +46,8 @@ async def generate_transit_chart(
             natal_subject,
             transit_subject,
             theme=request.config.theme,
-            language=request.config.language
+            language=request.config.language,
+            style=request.config.style,
         )
 
         # Get transit aspects
