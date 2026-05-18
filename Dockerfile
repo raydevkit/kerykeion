@@ -9,14 +9,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 
-RUN pip install --no-cache-dir poetry==1.7.1
+COPY requirements.txt ./
 
 
-COPY pyproject.toml poetry.lock* ./
-
-
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-dev --no-interaction --no-ansi --no-root
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
 
 FROM python:3.11-slim as production
