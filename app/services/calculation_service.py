@@ -346,9 +346,9 @@ def _serialize_phase_event(event_dt: datetime, reference_dt: datetime, is_past: 
         'datestamp': event_dt.strftime("%a, %d %b %Y %H:%M:%S %z"),
     }
     if is_past:
-        event['days_ago'] = round(days_diff, 1)
+        event['days_ago'] = int(round(days_diff))
     else:
-        event['days_ahead'] = round(days_diff, 1)
+        event['days_ahead'] = int(round(days_diff))
     return event
 
 
