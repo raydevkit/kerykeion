@@ -117,7 +117,8 @@ def calculate_relationship_score(subject_one: AstrologicalSubject, subject_two: 
                 normalized_score = max(0, min(100, ((score / cat_max) * 50) + 50))
             else:
                 normalized_score = 50.0
-            normalized_categories[category] = round(normalized_score, 1)
+            # RelationshipScoreResponse declares breakdown as Dict[str, int]
+            normalized_categories[category] = int(round(normalized_score))
 
         return {
             'score': round(total_score, 2),
