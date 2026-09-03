@@ -45,7 +45,7 @@ classifiers = [
     "Topic :: Religion",
     "Typing :: Typed",
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.9,<4.0"
 dependencies = [
     "pyswisseph>=2.10.3.1",
     "pydantic>=2.5",
