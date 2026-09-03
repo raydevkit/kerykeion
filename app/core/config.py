@@ -4,8 +4,10 @@ Application Configuration
 Uses pydantic-settings to load configuration from environment variables.
 """
 
-from typing import List
-from pydantic import field_validator
+from typing import List, Literal
+from urllib.parse import urlsplit
+
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,7 +16,7 @@ class Settings(BaseSettings):
 
     # API Configuration
     API_KEY: str = "your-secret-api-key-change-this-in-production"
-    ENVIRONMENT: str = "development"
+    ENVIRONMENT: Literal["development", "test", "production"] = "development"
 
     # CORS Configuration
     CORS_ORIGINS: str | List[str] = "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000"
@@ -39,6 +41,23 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [origin.strip() for origin in v.split(",")]
         return v
+
+    @field_validator("CORS_ORIGINS")
+    @classmethod
+    def validate_cors_origins(cls, origins):
+        for origin in origins:
+            parsed = urlsplit(origin)
+            if origin == "*" or parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                raise ValueError("CORS_ORIGINS must contain explicit HTTP(S) origins")
+        return origins
+
+    @model_validator(mode="after")
+    def validate_production_api_key(self):
+        if self.ENVIRONMENT == "production" and (
+            self.API_KEY == "your-secret-api-key-change-this-in-production" or len(self.API_KEY) < 32
+        ):
+            raise ValueError("production API_KEY must be non-default and at least 32 characters")
+        return self
 
     model_config = SettingsConfigDict(
         env_file=".env",

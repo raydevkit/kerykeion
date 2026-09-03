@@ -1,7 +1,6 @@
 """Composite Chart Endpoints"""
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
 import logging
 
 from app.core.security import verify_api_key
@@ -70,14 +69,14 @@ async def generate_composite_chart(
                 "details": {}
             }
         )
-    except Exception as e:
-        logger.error(f"Error generating composite chart: {str(e)}")
+    except Exception:
+        logger.exception("Error generating composite chart")
         raise HTTPException(
             status_code=500,
             detail={
                 "error": "GENERATION_FAILED",
                 "message": "Failed to generate composite chart",
-                "details": {"error": str(e)}
+                "details": {}
             }
         )
 
@@ -130,13 +129,13 @@ async def get_composite_data(
                 "details": {}
             }
         )
-    except Exception as e:
-        logger.error(f"Error calculating composite data: {str(e)}")
+    except Exception:
+        logger.exception("Error calculating composite data")
         raise HTTPException(
             status_code=500,
             detail={
                 "error": "CALCULATION_FAILED",
                 "message": "Failed to calculate composite data",
-                "details": {"error": str(e)}
+                "details": {}
             }
         )

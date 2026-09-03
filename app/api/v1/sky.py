@@ -1,7 +1,6 @@
 """Current Sky (Planetary Positions) Endpoint"""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
 import logging
 
 from app.core.security import verify_api_key
@@ -34,14 +33,14 @@ async def get_current_sky(
 
         return CurrentSkyResponse(**sky_data)
 
-    except Exception as e:
-        logger.error(f"Error calculating current sky positions: {str(e)}")
+    except Exception:
+        logger.exception("Error calculating current sky positions")
         raise HTTPException(
             status_code=500,
             detail={
                 "error": "CALCULATION_FAILED",
                 "message": "Failed to calculate current sky positions",
-                "details": {"error": str(e)}
+                "details": {}
             }
         )
 
@@ -72,13 +71,13 @@ async def get_moon_phase(
 
         return MoonPhaseResponse(**moon_data)
 
-    except Exception as e:
-        logger.error(f"Error calculating moon phase: {str(e)}")
+    except Exception:
+        logger.exception("Error calculating moon phase")
         raise HTTPException(
             status_code=500,
             detail={
                 "error": "CALCULATION_FAILED",
                 "message": "Failed to calculate moon phase",
-                "details": {"error": str(e)}
+                "details": {}
             }
         )
