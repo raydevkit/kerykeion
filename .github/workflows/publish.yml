@@ -30,6 +30,8 @@ jobs:
   verify:
     needs: validate-ref
     uses: ./.github/workflows/ci.yml
+    with:
+      tested_sha: ${{ needs.validate-ref.outputs.release_sha }}
     permissions:
       contents: read
 

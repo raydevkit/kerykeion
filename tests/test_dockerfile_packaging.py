@@ -37,6 +37,9 @@ def test_ci_verifies_the_lock_and_runs_the_production_image():
     assert "diff --unified requirements.lock" in workflow
     assert "load: true" in workflow
     assert "scripts/smoke_test_container.sh" in workflow
+    assert "github.event.pull_request.base.sha" in workflow
+    assert "scripts/run_regression_gate.sh pr" in workflow
+    assert "scripts/run_regression_gate.sh ancestor" in workflow
 
 
 def test_publish_is_release_tag_only_and_waits_for_verification():
@@ -49,6 +52,7 @@ def test_publish_is_release_tag_only_and_waits_for_verification():
     assert "type=raw,value=sha-" in workflow
     assert "type=raw,value=${{ github.ref_name }}" in workflow
     assert "type=raw,value=latest" not in workflow
+    assert "tested_sha: ${{ needs.validate-ref.outputs.release_sha }}" in workflow
 
 
 def test_external_github_actions_are_pinned_to_full_commit_shas():

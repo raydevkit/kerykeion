@@ -60,6 +60,34 @@ def test_root_uses_an_immutable_source_url_and_omits_production_docs():
     assert "docs" not in payload
 
 
+@pytest.mark.parametrize(
+    "revision_settings",
+    [
+        {},
+        {"GIT_REVISION": ""},
+        {"GIT_REVISION": "unknown"},
+        {"GIT_REVISION": "a" * 39},
+        {"GIT_REVISION": "g" * 40},
+    ],
+)
+def test_production_rejects_missing_and_invalid_git_revisions(revision_settings):
+    with pytest.raises(ValidationError):
+        Settings(ENVIRONMENT="production", API_KEY="x" * 32, _env_file=None, **revision_settings)
+
+
+def test_production_accepts_and_normalizes_a_full_git_revision():
+    production = Settings(ENVIRONMENT="production", API_KEY="x" * 32, GIT_REVISION="A" * 40, _env_file=None)
+
+    assert production.GIT_REVISION == "a" * 40
+
+
+@pytest.mark.parametrize(("environment", "revision"), [("development", "unknown"), ("test", "local-test")])
+def test_non_production_accepts_local_revision_fallbacks(environment, revision):
+    config = Settings(ENVIRONMENT=environment, GIT_REVISION=revision, _env_file=None)
+
+    assert config.GIT_REVISION == revision
+
+
 def test_documentation_is_available_outside_production():
     client = TestClient(app)
 
@@ -68,7 +96,7 @@ def test_documentation_is_available_outside_production():
 
 
 def test_documentation_is_disabled_in_production():
-    production = Settings(ENVIRONMENT="production", API_KEY="x" * 32, _env_file=None)
+    production = Settings(ENVIRONMENT="production", API_KEY="x" * 32, GIT_REVISION="a" * 40, _env_file=None)
     client = TestClient(create_app(production))
 
     assert client.get("/docs").status_code == 404

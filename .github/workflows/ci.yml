@@ -2,6 +2,12 @@ name: CI
 
 on:
   workflow_call:
+    inputs:
+      tested_sha:
+        description: Exact release commit to verify
+        required: false
+        type: string
+        default: ""
   pull_request:
   push:
     branches:
@@ -11,7 +17,7 @@ permissions:
   contents: read
 
 env:
-  SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+  SOURCE_REVISION: ${{ inputs.tested_sha || (github.event_name == 'pull_request' && github.event.pull_request.head.sha) || github.sha }}
 
 jobs:
   test:
@@ -20,6 +26,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.SOURCE_REVISION }}
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.15"
@@ -31,9 +38,13 @@ jobs:
           poetry export --only main --format requirements.txt --output /tmp/requirements.lock.generated
           diff --unified requirements.lock /tmp/requirements.lock.generated
       - name: Lint backend
-        run: poetry run ruff check app scripts/check_regression_baseline.py tests/test_fastapi_deployment.py tests/test_dockerfile_packaging.py
+        run: >-
+          poetry run ruff check app scripts/check_regression_baseline.py
+          tests/test_fastapi_deployment.py tests/test_dockerfile_packaging.py tests/test_regression_checker.py
       - name: Test FastAPI and packaging
         run: poetry run pytest -o addopts='' tests/test_fastapi_deployment.py tests/test_dockerfile_packaging.py
+      - name: Test regression checker
+        run: poetry run pytest -o addopts='' tests/test_regression_checker.py
       - name: Test compatible existing suite
         run: >-
           poetry run pytest -o addopts=''
@@ -41,8 +52,14 @@ jobs:
           tests/test_moon_phase_contract.py
           tests/test_birth_chart_style.py
           tests/test_chart_config_style.py
-      - name: Reject full-suite regressions
-        run: poetry run python scripts/check_regression_baseline.py
+      - name: Verify exact PR base and reject regressions
+        if: github.event_name == 'pull_request'
+        env:
+          EXPECTED_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: scripts/run_regression_gate.sh pr "${SOURCE_REVISION}" "${EXPECTED_BASE_SHA}"
+      - name: Verify baseline ancestry and reject regressions
+        if: github.event_name != 'pull_request'
+        run: scripts/run_regression_gate.sh ancestor "${SOURCE_REVISION}"
 
   docker:
     needs: test

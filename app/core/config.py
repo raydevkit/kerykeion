@@ -4,6 +4,7 @@ Application Configuration
 Uses pydantic-settings to load configuration from environment variables.
 """
 
+import re
 from typing import List, Literal
 from urllib.parse import urlsplit
 
@@ -53,12 +54,21 @@ class Settings(BaseSettings):
                 raise ValueError("CORS_ORIGINS must contain explicit HTTP(S) origins")
         return origins
 
+    @field_validator("GIT_REVISION")
+    @classmethod
+    def normalize_git_revision(cls, revision):
+        if re.fullmatch(r"[0-9a-fA-F]{40}", revision):
+            return revision.lower()
+        return revision
+
     @model_validator(mode="after")
-    def validate_production_api_key(self):
+    def validate_production_settings(self):
         if self.ENVIRONMENT == "production" and (
             self.API_KEY == "your-secret-api-key-change-this-in-production" or len(self.API_KEY) < 32
         ):
             raise ValueError("production API_KEY must be non-default and at least 32 characters")
+        if self.ENVIRONMENT == "production" and not re.fullmatch(r"[0-9a-f]{40}", self.GIT_REVISION):
+            raise ValueError("production GIT_REVISION must be a full 40-character Git SHA")
         return self
 
     model_config = SettingsConfigDict(

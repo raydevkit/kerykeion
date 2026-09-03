@@ -7,11 +7,14 @@ revision=${3:?usage: smoke_test_container.sh IMAGE VERSION REVISION}
 prefix="kerykeion-smoke-$$"
 missing_key_container="${prefix}-missing-key"
 default_key_container="${prefix}-default-key"
+missing_revision_container="${prefix}-missing-revision"
+invalid_revision_container="${prefix}-invalid-revision"
 running_container="${prefix}-running"
 api_key="ci-production-api-key-0123456789abcdef"
 
 cleanup() {
-    docker rm --force "$missing_key_container" "$default_key_container" "$running_container" >/dev/null 2>&1 || true
+    docker rm --force "$missing_key_container" "$default_key_container" "$missing_revision_container" \
+        "$invalid_revision_container" "$running_container" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -32,6 +35,8 @@ assert_startup_fails() {
 
 assert_startup_fails "$missing_key_container"
 assert_startup_fails "$default_key_container" --env API_KEY=your-secret-api-key-change-this-in-production
+assert_startup_fails "$missing_revision_container" --env API_KEY="$api_key" --env GIT_REVISION=
+assert_startup_fails "$invalid_revision_container" --env API_KEY="$api_key" --env GIT_REVISION=not-a-git-sha
 
 [[ $(docker image inspect --format '{{.Config.User}}' "$image") == "appuser" ]]
 [[ $(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' "$image") == "$version" ]]
