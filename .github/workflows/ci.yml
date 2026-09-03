@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_call:
   pull_request:
   push:
     branches:
@@ -9,18 +10,28 @@ on:
 permissions:
   contents: read
 
+env:
+  SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-python@v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_REVISION }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11.15"
-      - run: pip install poetry==2.3.1
+      - name: Install test and export tooling
+        run: pip install poetry==2.3.1 poetry-plugin-export==1.10.0
       - run: poetry install --no-interaction --no-root
+      - name: Verify production dependency lock
+        run: |
+          poetry export --only main --format requirements.txt --output /tmp/requirements.lock.generated
+          diff --unified requirements.lock /tmp/requirements.lock.generated
       - name: Lint backend
-        run: poetry run ruff check app tests/test_fastapi_deployment.py tests/test_dockerfile_packaging.py
+        run: poetry run ruff check app scripts/check_regression_baseline.py tests/test_fastapi_deployment.py tests/test_dockerfile_packaging.py
       - name: Test FastAPI and packaging
         run: poetry run pytest -o addopts='' tests/test_fastapi_deployment.py tests/test_dockerfile_packaging.py
       - name: Test compatible existing suite
@@ -30,21 +41,28 @@ jobs:
           tests/test_moon_phase_contract.py
           tests/test_birth_chart_style.py
           tests/test_chart_config_style.py
+      - name: Reject full-suite regressions
+        run: poetry run python scripts/check_regression_baseline.py
 
   docker:
-    if: github.event_name == 'pull_request'
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: docker/setup-buildx-action@v4.3.0
-      - uses: docker/build-push-action@v7.3.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_REVISION }}
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           platforms: linux/amd64
+          load: true
           push: false
+          tags: kerykeion-kabalah:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
             VERSION=ci
-            REVISION=${{ github.sha }}
+            REVISION=${{ env.SOURCE_REVISION }}
+      - name: Smoke test production image
+        run: scripts/smoke_test_container.sh kerykeion-kabalah:ci ci "${SOURCE_REVISION}"

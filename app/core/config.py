@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     # API Configuration
     API_KEY: str = "your-secret-api-key-change-this-in-production"
     ENVIRONMENT: Literal["development", "test", "production"] = "development"
+    APP_VERSION: str = "dev"
+    GIT_REVISION: str = "unknown"
 
     # CORS Configuration
     CORS_ORIGINS: str | List[str] = "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000"

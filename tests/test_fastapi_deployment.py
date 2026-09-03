@@ -7,6 +7,19 @@ from app.core.config import Settings, settings
 from app.main import app, create_app
 
 
+def valid_sky_response():
+    return {
+        "date": "2026-01-01T00:00:00Z",
+        "location": {},
+        **{
+            name: {}
+            for name in ("sun", "moon", "mercury", "venus", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto")
+        },
+        "houses": [],
+        "lunar_phase": None,
+    }
+
+
 def test_health_is_public():
     response = TestClient(app).get("/health")
 
@@ -14,10 +27,37 @@ def test_health_is_public():
     assert response.json()["status"] == "healthy"
 
 
-def test_root_advertises_the_agpl_source():
-    response = TestClient(app).get("/")
+def test_root_advertises_local_metadata_and_documentation_outside_production():
+    local_app = create_app(
+        Settings(ENVIRONMENT="development", APP_VERSION="dev", GIT_REVISION="unknown", _env_file=None)
+    )
 
-    assert response.json()["source"] == "https://github.com/raydevkit/kerykeion/tree/chore/fast-api"
+    payload = TestClient(local_app).get("/").json()
+
+    assert payload["version"] == "dev"
+    assert payload["revision"] == "unknown"
+    assert payload["source"] == "https://github.com/raydevkit/kerykeion"
+    assert payload["docs"] == "/docs"
+
+
+def test_root_uses_an_immutable_source_url_and_omits_production_docs():
+    revision = "a" * 40
+    production_app = create_app(
+        Settings(
+            ENVIRONMENT="production",
+            API_KEY="x" * 32,
+            APP_VERSION="5.12.8-test",
+            GIT_REVISION=revision,
+            _env_file=None,
+        )
+    )
+
+    payload = TestClient(production_app).get("/").json()
+
+    assert payload["version"] == "5.12.8-test"
+    assert payload["revision"] == revision
+    assert payload["source"] == f"https://github.com/raydevkit/kerykeion/tree/{revision}"
+    assert "docs" not in payload
 
 
 def test_documentation_is_available_outside_production():
@@ -71,18 +111,39 @@ def test_protected_endpoint_rejects_an_invalid_api_key():
 
 
 def test_protected_endpoint_accepts_the_configured_api_key():
-    sky = {
-        "date": "2026-01-01T00:00:00Z",
-        "location": {},
-        **{name: {} for name in ("sun", "moon", "mercury", "venus", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto")},
-        "houses": [],
-        "lunar_phase": None,
-    }
-
-    with patch("app.api.v1.sky.get_current_sky_positions", return_value=sky):
+    with patch("app.api.v1.sky.get_current_sky_positions", return_value=valid_sky_response()):
         response = TestClient(app).get("/api/v1/sky/now", headers={"X-API-Key": settings.API_KEY})
 
     assert response.status_code == 200
+
+
+def test_factory_app_accepts_its_own_api_key():
+    custom_key = "custom-production-key-that-is-long-enough"
+    custom_app = create_app(Settings(ENVIRONMENT="test", API_KEY=custom_key, _env_file=None))
+
+    with patch("app.api.v1.sky.get_current_sky_positions", return_value=valid_sky_response()):
+        response = TestClient(custom_app).get("/api/v1/sky/now", headers={"X-API-Key": custom_key})
+
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("api_key", "expected_status"),
+    [
+        (None, 401),
+        ("wrong", 403),
+        (settings.API_KEY, 403),
+    ],
+)
+def test_factory_app_rejects_missing_invalid_and_global_api_keys(api_key, expected_status):
+    custom_app = create_app(
+        Settings(ENVIRONMENT="test", API_KEY="custom-production-key-that-is-long-enough", _env_file=None)
+    )
+    headers = {"X-API-Key": api_key} if api_key else {}
+
+    response = TestClient(custom_app).get("/api/v1/sky/now", headers=headers)
+
+    assert response.status_code == expected_status
 
 
 def test_internal_errors_do_not_leak_exception_messages():
