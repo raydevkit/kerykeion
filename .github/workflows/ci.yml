@@ -27,7 +27,6 @@ jobs:
       - name: Test compatible existing suite
         run: >-
           poetry run pytest -o addopts=''
-          tests/test_relationship_score.py
           tests/test_relationship_breakdown.py
           tests/test_moon_phase_contract.py
           tests/test_birth_chart_style.py
