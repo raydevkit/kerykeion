@@ -5,7 +5,6 @@ Handles birth chart generation requests.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
 import logging
 
 from app.core.security import verify_api_key
@@ -65,14 +64,14 @@ async def generate_birth_chart(
                 "details": {}
             }
         )
-    except Exception as e:
-        logger.error(f"Error generating birth chart: {str(e)}")
+    except Exception:
+        logger.exception("Error generating birth chart")
         raise HTTPException(
             status_code=500,
             detail={
                 "error": "GENERATION_FAILED",
                 "message": "Failed to generate birth chart",
-                "details": {"error": str(e)}
+                "details": {}
             }
         )
 
@@ -117,13 +116,13 @@ async def get_birth_data(
                 "details": {}
             }
         )
-    except Exception as e:
-        logger.error(f"Error calculating birth data: {str(e)}")
+    except Exception:
+        logger.exception("Error calculating birth data")
         raise HTTPException(
             status_code=500,
             detail={
                 "error": "CALCULATION_FAILED",
                 "message": "Failed to calculate birth data",
-                "details": {"error": str(e)}
+                "details": {}
             }
         )

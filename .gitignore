@@ -39,6 +39,7 @@ Thumbs.db
 # Folders #
 ###########
 
+node_modules/
 __pycache__
 venv
 .vscode

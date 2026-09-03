@@ -53,6 +53,9 @@ def create_astrological_subject(subject_input: SubjectInput, zodiac_type: str = 
             lat=subject_input.latitude,
             tz_str=subject_input.timezone,
             city=subject_input.city or "Unknown",
+            # Label-only in offline mode (lng/lat/tz provided) — without it the
+            # library defaults to "GB" and charts render e.g. "Rome, GB".
+            nation=subject_input.nation or "GB",
             zodiac_type=normalized_zodiac,
             houses_system_identifier=normalized_house_system,
             sidereal_mode=sidereal_mode,

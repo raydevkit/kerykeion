@@ -1,7 +1,6 @@
 """Synastry (Relationship Compatibility) Endpoints"""
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
 import logging
 
 from app.core.security import verify_api_key
@@ -76,14 +75,14 @@ async def generate_synastry_chart(
                 "details": {}
             }
         )
-    except Exception as e:
-        logger.error(f"Error generating synastry chart: {str(e)}")
+    except Exception:
+        logger.exception("Error generating synastry chart")
         raise HTTPException(
             status_code=500,
             detail={
                 "error": "GENERATION_FAILED",
                 "message": "Failed to generate synastry chart",
-                "details": {"error": str(e)}
+                "details": {}
             }
         )
 
@@ -135,13 +134,13 @@ async def get_synastry_data(
                 "details": {}
             }
         )
-    except Exception as e:
-        logger.error(f"Error calculating synastry data: {str(e)}")
+    except Exception:
+        logger.exception("Error calculating synastry data")
         raise HTTPException(
             status_code=500,
             detail={
                 "error": "CALCULATION_FAILED",
                 "message": "Failed to calculate synastry data",
-                "details": {"error": str(e)}
+                "details": {}
             }
         )

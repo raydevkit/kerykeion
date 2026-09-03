@@ -1,7 +1,6 @@
 """Relationship Compatibility Score Endpoint"""
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
 import logging
 
 from app.core.security import verify_api_key
@@ -62,13 +61,13 @@ async def calculate_compatibility_score(
                 "details": {}
             }
         )
-    except Exception as e:
-        logger.error(f"Error calculating relationship score: {str(e)}")
+    except Exception:
+        logger.exception("Error calculating relationship score")
         raise HTTPException(
             status_code=500,
             detail={
                 "error": "CALCULATION_FAILED",
                 "message": "Failed to calculate relationship score",
-                "details": {"error": str(e)}
+                "details": {}
             }
         )

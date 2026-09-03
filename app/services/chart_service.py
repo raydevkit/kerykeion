@@ -5,7 +5,6 @@ Handles SVG chart generation using Kerykeion's ChartDrawer (v5).
 Falls back to legacy KerykeionChartSVG for compatibility.
 """
 
-from typing import Optional
 from kerykeion import AstrologicalSubject, KerykeionChartSVG
 from kerykeion.charts.chart_drawer import ChartDrawer
 from kerykeion.chart_data_factory import ChartDataFactory

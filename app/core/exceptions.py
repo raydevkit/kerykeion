@@ -4,9 +4,13 @@ Custom Exception Handlers
 Defines custom exceptions and error handlers for the application.
 """
 
+import logging
+
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+
+logger = logging.getLogger(__name__)
 
 
 class AstrologyCalculationError(Exception):
@@ -32,13 +36,14 @@ async def astrology_calculation_error_handler(
     request: Request, exc: AstrologyCalculationError
 ):
     """Handle astrology calculation errors"""
+    logger.error("Astrology calculation error", exc_info=(type(exc), exc, exc.__traceback__))
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "error": {
                 "code": "ASTROLOGY_CALCULATION_ERROR",
-                "message": exc.message,
-                "details": exc.details,
+                "message": "Astrology calculation failed",
+                "details": {},
             }
         },
     )

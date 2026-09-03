@@ -55,12 +55,10 @@ request_cache
 cache/
 
 # Environment files (security)
-.env
-.env.local
-.env.production
-.env*.local
+.env*
 
 # Development files
+node_modules/
 dev.bat
 dev.py
 start.bat
