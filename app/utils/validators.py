@@ -4,7 +4,6 @@ Validation Utilities
 Helper functions for validating and converting input data.
 """
 
-from typing import Optional
 
 # House system name to identifier mapping
 HOUSE_SYSTEM_MAP = {

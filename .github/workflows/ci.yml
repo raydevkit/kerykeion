@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - chore/fast-api
+      - deploy/rs1000-kerykeion
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.11.15"
+      - run: pip install poetry==2.3.1
+      - run: poetry install --no-interaction --no-root
+      - name: Lint backend
+        run: poetry run ruff check app tests/test_fastapi_deployment.py tests/test_dockerfile_packaging.py
+      - name: Test FastAPI and packaging
+        run: poetry run pytest -o addopts='' tests/test_fastapi_deployment.py tests/test_dockerfile_packaging.py
+      - name: Test compatible existing suite
+        run: >-
+          poetry run pytest -o addopts=''
+          tests/test_relationship_score.py
+          tests/test_relationship_breakdown.py
+          tests/test_moon_phase_contract.py
+          tests/test_birth_chart_style.py
+          tests/test_chart_config_style.py
+
+  docker:
+    if: github.event_name == 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: docker/setup-buildx-action@v4.3.0
+      - uses: docker/build-push-action@v7.3.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=ci
+            REVISION=${{ github.sha }}

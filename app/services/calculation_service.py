@@ -12,7 +12,6 @@ from kerykeion.astrological_subject_factory import AstrologicalSubjectFactory
 from kerykeion.moon_phase_details.factory import (
     MoonPhaseDetailsFactory,
     SYNODIC_MONTH_DAYS,
-    _compute_major_phase_name,
 )
 from app.schemas.common import SubjectInput
 from app.core.config import settings as app_settings
@@ -93,9 +92,9 @@ def get_current_sky_positions(timezone: str = "UTC", longitude: float = 0.0, lat
 
         # Extract planet data as individual planets (matching birth chart format)
         planets_data = {}
-        planet_names = ['sun', 'moon', 'mercury', 'venus', 'mars', 
+        planet_names = ['sun', 'moon', 'mercury', 'venus', 'mars',
                        'jupiter', 'saturn', 'uranus', 'neptune', 'pluto']
-        
+
         for planet_name in planet_names:
             planet_obj = getattr(current_subject, planet_name, None)
             if planet_obj:
@@ -119,12 +118,12 @@ def get_current_sky_positions(timezone: str = "UTC", longitude: float = 0.0, lat
             lp = current_subject.lunar_phase
             moon_phase_day = lp.get('moon_phase', 0)
             degrees_between = lp.get('degrees_between_s_m', 0)
-            
+
             # Calculate illumination using the correct formula based on elongation angle
             # illumination = (1 - cos(elongation)) / 2 * 100
             # This gives: 0° = 0%, 90° = 50%, 180° = 100%
             illumination = (1 - math.cos(math.radians(degrees_between))) / 2 * 100
-            
+
             lunar_phase = {
                 'name': lp.get('moon_phase_name', ''),
                 'emoji': lp.get('moon_emoji', ''),

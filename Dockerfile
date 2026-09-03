@@ -1,56 +1,37 @@
-FROM python:3.11-slim as builder
+FROM python:3.11.15-slim-bookworm@sha256:77923445c077d8eb971b14b2b114a1d9cd4a87edb4c75654820ca4832ee8cb15 AS builder
+
+WORKDIR /build
+COPY requirements.lock ./
+RUN pip install --no-cache-dir --require-hashes --prefix=/install -r requirements.lock
+
+
+FROM python:3.11.15-slim-bookworm@sha256:77923445c077d8eb971b14b2b114a1d9cd4a87edb4c75654820ca4832ee8cb15 AS production
+
+ARG VERSION=dev
+ARG REVISION=unknown
+
+LABEL org.opencontainers.image.source="https://github.com/raydevkit/kerykeion" \
+      org.opencontainers.image.licenses="AGPL-3.0" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.version="${VERSION}"
+
+RUN useradd --system --uid 10001 --no-create-home --home-dir /nonexistent appuser
 
 WORKDIR /app
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    g++ \
-    make \
-    && rm -rf /var/lib/apt/lists/*
-
-
-COPY requirements.txt ./
-
-
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
-
-
-FROM python:3.11-slim as production
-
-WORKDIR /app
-
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
-
-
-RUN useradd --create-home --shell /bin/bash appuser
-
-
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
-
-
-COPY --chown=appuser:appuser . .
-
-
-USER appuser
-
+COPY --from=builder /install /usr/local
+COPY app ./app
+COPY kerykeion ./kerykeion
+COPY LICENSE ./LICENSE
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PORT=8000 \
-    HOST=0.0.0.0
+    HOME=/tmp \
+    XDG_CACHE_HOME=/tmp
 
-
+USER appuser
 EXPOSE 8000
 
-
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${PORT}/health || exit 1
-
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()"]
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
