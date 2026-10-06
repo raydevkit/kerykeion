@@ -1,0 +1,24 @@
+{
+  "query": {
+    "q": "Parabiago",
+    "country": "IT"
+  },
+  "search": {
+    "totalResultsCount": 3,
+    "geonames": [
+      {
+        "lng": "8.94545",
+        "geonameId": 3171484,
+        "countryCode": "IT",
+        "name": "Parabiago",
+        "toponymName": "Parabiago",
+        "lat": "45.56034",
+        "fcl": "P",
+        "fcode": "PPLA3"
+      }
+    ]
+  },
+  "timezone": {
+    "timezoneId": "Europe/Rome"
+  }
+}

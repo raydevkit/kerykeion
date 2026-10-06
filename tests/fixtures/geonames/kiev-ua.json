@@ -1,0 +1,24 @@
+{
+  "query": {
+    "q": "Kiev",
+    "country": "UA"
+  },
+  "search": {
+    "totalResultsCount": 1509,
+    "geonames": [
+      {
+        "lng": "30.5238",
+        "geonameId": 703448,
+        "countryCode": "UA",
+        "name": "Kyiv",
+        "toponymName": "Kyiv",
+        "lat": "50.45466",
+        "fcl": "P",
+        "fcode": "PPLC"
+      }
+    ]
+  },
+  "timezone": {
+    "timezoneId": "Europe/Kyiv"
+  }
+}

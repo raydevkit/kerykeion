@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -109,11 +110,18 @@ def verify_ancestor(repository: Path, base_sha: str, tested_sha: str) -> None:
         raise BaselineError(f"baseline commit {base_sha} is not an ancestor of tested commit {tested_sha}")
 
 
-def collect_results(tests_root: Path) -> tuple[dict[str, list[str]], pytest.ExitCode]:
+def collect_results(tests_root: Path, *, offline_geonames: bool = False) -> tuple[dict[str, list[str]], pytest.ExitCode]:
     project_root = tests_root.resolve().parent
     os.chdir(project_root)
     sys.path.insert(0, str(project_root))
     collector = FailureCollector()
+    plugins = [collector]
+    if offline_geonames:
+        # Use the reviewed HTTP recordings with the base's original tests and code.
+        spec = importlib.util.spec_from_file_location("regression_offline_geonames", ROOT / "tests" / "conftest.py")
+        plugin = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(plugin)
+        plugins.append(plugin)
     exit_code = pytest.main(
         [
             "-o",
@@ -125,7 +133,7 @@ def collect_results(tests_root: Path) -> tuple[dict[str, list[str]], pytest.Exit
             "--continue-on-collection-errors",
             str(tests_root.resolve()),
         ],
-        plugins=[collector],
+        plugins=plugins,
     )
     return collector.result(), exit_code
 
@@ -148,6 +156,7 @@ def _parser() -> argparse.ArgumentParser:
     collect = subparsers.add_parser("collect")
     collect.add_argument("--tests-root", type=Path, default=ROOT / "tests")
     collect.add_argument("--output", type=Path, required=True)
+    collect.add_argument("--offline-geonames", action="store_true", help="Replay head GeoNames fixtures for base tests")
 
     verify_pr = subparsers.add_parser("verify-pr")
     verify_pr.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
@@ -167,7 +176,7 @@ def main() -> int:
     args = _parser().parse_args()
     try:
         if args.command == "collect":
-            observed, exit_code = collect_results(args.tests_root)
+            observed, exit_code = collect_results(args.tests_root, offline_geonames=args.offline_geonames)
             args.output.write_text(json.dumps(observed, indent=2) + "\n", encoding="utf-8")
             if exit_code not in {pytest.ExitCode.OK, pytest.ExitCode.TESTS_FAILED}:
                 raise BaselineError(f"pytest exited before completing the suite: {exit_code}")

@@ -1,0 +1,24 @@
+{
+  "query": {
+    "q": "Kesswil",
+    "country": "CH"
+  },
+  "search": {
+    "totalResultsCount": 11,
+    "geonames": [
+      {
+        "lng": "9.31723",
+        "geonameId": 2660168,
+        "countryCode": "CH",
+        "name": "Kesswil",
+        "toponymName": "Kesswil",
+        "lat": "47.5935",
+        "fcl": "P",
+        "fcode": "PPL"
+      }
+    ]
+  },
+  "timezone": {
+    "timezoneId": "Europe/Zurich"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "query": {
+    "q": "Pontrhydyfen",
+    "country": "UK"
+  },
+  "search": {
+    "totalResultsCount": 1,
+    "geonames": [
+      {
+        "lng": "-3.74469",
+        "geonameId": 2640118,
+        "countryCode": "GB",
+        "name": "Pontrhydyfen",
+        "toponymName": "Pontrhydyfen",
+        "lat": "51.63435",
+        "fcl": "P",
+        "fcode": "PPL"
+      }
+    ]
+  },
+  "timezone": {
+    "timezoneId": "Europe/London"
+  }
+}

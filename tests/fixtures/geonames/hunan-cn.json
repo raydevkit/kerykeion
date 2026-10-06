@@ -1,0 +1,24 @@
+{
+  "query": {
+    "q": "Hunan",
+    "country": "CN"
+  },
+  "search": {
+    "totalResultsCount": 42302,
+    "geonames": [
+      {
+        "lng": "112.97087",
+        "geonameId": 1815577,
+        "countryCode": "CN",
+        "name": "Changsha",
+        "toponymName": "Changsha",
+        "lat": "28.19874",
+        "fcl": "P",
+        "fcode": "PPLA"
+      }
+    ]
+  },
+  "timezone": {
+    "timezoneId": "Asia/Shanghai"
+  }
+}

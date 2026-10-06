@@ -1,3 +1,9 @@
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
 import pytest
 
 from scripts.check_regression_baseline import BaselineError, verify_regression
@@ -63,3 +69,36 @@ def test_rejects_an_error_that_changes_into_a_failure():
 
 def test_accepts_an_independently_verified_base_and_known_head_results():
     verify_regression(BASELINE, OBSERVED, expected_base_sha=BASE_SHA, base_observed=OBSERVED)
+
+
+def test_base_collection_replays_http_without_hiding_failures(tmp_path):
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_base.py").write_text(
+        'from kerykeion.fetch_geonames import FetchGeonames\n'
+        # A lookup during collection verifies the plugin runs before test imports.
+        'rome = FetchGeonames("Roma", "IT").get_serialized_data()\n'
+        'def test_known_location():\n'
+        '    assert rome["timezonestr"] == "Europe/Rome"\n'
+        'def test_unknown_location():\n'
+        '    FetchGeonames("Unrecorded City", "IT").get_serialized_data()\n'
+        'def test_real_failure():\n'
+        '    assert False, "real regression"\n',
+        encoding="utf-8",
+    )
+    output = tmp_path / "observed.json"
+    root = Path(__file__).resolve().parent.parent
+    result = subprocess.run(
+        [sys.executable, str(root / "scripts/check_regression_baseline.py"), "collect",
+         "--tests-root", str(tests), "--offline-geonames", "--output", str(output)],
+        env={**os.environ, "PYTHONPATH": str(root)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(output.read_text()) == {
+        "failed": ["tests/test_base.py::test_real_failure", "tests/test_base.py::test_unknown_location"],
+        "errors": [],
+    }
