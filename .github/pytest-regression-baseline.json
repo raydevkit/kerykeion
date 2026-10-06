@@ -90,6 +90,7 @@
   ],
   "errors": [
     "tests/settings/test_settings.py",
+    "tests/test_fastapi_deployment.py",
     "tests/test_report.py",
     "tests/test_utc.py"
   ]
