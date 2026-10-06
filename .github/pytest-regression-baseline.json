@@ -1,5 +1,5 @@
 {
-  "base_sha": "c29c52fbefade62790795f080f4f56f597a2907a",
+  "base_sha": "2dbc0555f161ec26d2d64606b64c42beaa315096",
   "failed": [
     "tests/aspects/test_natal_aspects.py::TestNatalAspects::test_relevant_aspects",
     "tests/aspects/test_natal_aspects.py::TestNatalAspects::test_relevant_aspects_length",
