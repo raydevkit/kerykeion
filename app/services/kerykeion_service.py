@@ -5,11 +5,13 @@ Wrapper functions for the Kerykeion astrology library.
 Handles creation of AstrologicalSubject instances and data extraction.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 import warnings
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", DeprecationWarning)
     from kerykeion import AstrologicalSubject, SynastryAspects, CompositeSubjectFactory
+from kerykeion.aspects.aspects_factory import AspectsFactory
+from kerykeion.schemas.kr_models import AstrologicalSubjectModel, CompositeSubjectModel
 from app.schemas.common import SubjectInput
 from app.core.config import settings as app_settings
 from app.utils.validators import normalize_house_system, normalize_zodiac_type
@@ -150,30 +152,32 @@ def extract_house_data(subject: AstrologicalSubject) -> List[Dict[str, Any]]:
     return houses
 
 
-def extract_aspect_data(subject: AstrologicalSubject) -> List[Dict[str, Any]]:
+def extract_aspect_data(
+    subject: Union[AstrologicalSubject, AstrologicalSubjectModel, CompositeSubjectModel],
+) -> List[Dict[str, Any]]:
     """
-    Extract aspect data from AstrologicalSubject.
+    Calculate single-chart aspects and preserve the API response keys.
 
     Args:
-        subject: AstrologicalSubject instance
+        subject: Legacy AstrologicalSubject or a natal/composite subject model
 
     Returns:
         List of aspect dictionaries
     """
-    aspects = []
-
-    if hasattr(subject, 'aspects_list'):
-        for aspect in subject.aspects_list:
-            aspects.append({
-                'planet1': aspect.get('p1_name', ''),
-                'planet2': aspect.get('p2_name', ''),
-                'aspect': aspect.get('aspect', ''),
-                'angle': aspect.get('aspect_degrees', 0.0),
-                'orb': aspect.get('orbit', 0.0),
-                'is_active': aspect.get('aid', 0) > 0,
-            })
-
-    return aspects
+    model = subject.model() if isinstance(subject, AstrologicalSubject) else subject
+    aspects = AspectsFactory.single_chart_aspects(model).aspects
+    return [
+        {
+            'planet1': aspect.p1_name,
+            'planet2': aspect.p2_name,
+            'aspect': aspect.aspect.capitalize(),
+            'angle': aspect.aspect_degrees,
+            'orb': aspect.orbit,
+            # The factory already filters by active aspect types and orb limits.
+            'is_active': True,
+        }
+        for aspect in aspects
+    ]
 
 
 def get_synastry_aspects(subject_one: AstrologicalSubject, subject_two: AstrologicalSubject) -> List[Dict[str, Any]]:
@@ -205,7 +209,7 @@ def get_synastry_aspects(subject_one: AstrologicalSubject, subject_two: Astrolog
             'planet1_owner': subject_one.name,
             'planet2': aspect_dict.get('p2_name', ''),
             'planet2_owner': subject_two.name,
-            'aspect': aspect_dict.get('aspect', ''),
+            'aspect': aspect_dict.get('aspect', '').capitalize(),
             'angle': aspect_dict.get('aspect_degrees', 0.0),
             'orb': aspect_dict.get('orbit', 0.0),
             'color': aspect_dict.get('color', ''),
@@ -214,7 +218,7 @@ def get_synastry_aspects(subject_one: AstrologicalSubject, subject_two: Astrolog
     return formatted_aspects
 
 
-def create_composite_subject(subject_one: AstrologicalSubject, subject_two: AstrologicalSubject) -> AstrologicalSubject:
+def create_composite_subject(subject_one: AstrologicalSubject, subject_two: AstrologicalSubject) -> CompositeSubjectModel:
     """
     Create a composite chart subject from two subjects.
 
@@ -223,9 +227,12 @@ def create_composite_subject(subject_one: AstrologicalSubject, subject_two: Astr
         subject_two: Second AstrologicalSubject
 
     Returns:
-        Composite AstrologicalSubject
+        CompositeSubjectModel
     """
-    factory = CompositeSubjectFactory(subject_one, subject_two)
+    factory = CompositeSubjectFactory(
+        subject_one.model() if isinstance(subject_one, AstrologicalSubject) else subject_one,
+        subject_two.model() if isinstance(subject_two, AstrologicalSubject) else subject_two,
+    )
     composite = factory.get_midpoint_composite_subject_model()
     return composite
 
