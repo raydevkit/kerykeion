@@ -34,6 +34,19 @@ O contrato do container é TCP `8000` e `GET /health`. O `--publish` acima serve
 
 Em pull requests, o CI exige que `base_sha` em `.github/pytest-regression-baseline.json` seja exatamente `github.event.pull_request.base.sha`. Ele cria um worktree e um ambiente isolados no commit base, instala os pacotes registrados no lock desse commit, coleta os node IDs de falhas e erros e exige igualdade exata com o JSON antes de comparar o head. Como o lock do base revisado tem somente o content hash do Poetry desatualizado, o gate recalcula esse metadado apenas na cópia temporária; as versões travadas não são alteradas.
 
+As consultas GeoNames são reproduzidas por `tests/conftest.py`, antes da coleta, a partir dos JSONs em `tests/fixtures/geonames/`. O gate carrega esse mesmo plugin do head no processo do base com `collect --offline-geonames`: o código da biblioteca e os testes continuam sendo os do base. Isso também estabiliza PRs cujo base ainda não tem o plugin. Não há exclusão de testes nem retries que possam mascarar falhas. O ambiente do base inclui `pytest`, `pytest-asyncio` e `httpx` nas versões do seu lock; `httpx` é necessário para coletar os testes FastAPI.
+
+Os 21 registros foram extraídos das respostas bem-sucedidas do cache local GeoNames em 2026-10-06, no commit `c29c52fbefade62790795f080f4f56f597a2907a`. Preservam o payload de busca; o payload de timezone mantém somente `timezoneId`, descartando campos voláteis não consumidos. Incluem `Roma`/`Rome` e consultas `GB`/`UK` separadas. Coordenadas e timezone explícitos (por exemplo, Los Angeles, Shawnee e Lisbon) não fazem consulta. Uma cidade/país ou coordenada desconhecida falha com `add a fixture`, sem fallback para rede. Para ampliar a cobertura, adicione um JSON no mesmo formato, com a resposta GeoNames revisada; testes unitários de erros HTTP podem substituir `session.send`. Conexões e resolução DNS não simuladas também falham, e o cache temporário não usa o cache pessoal ou do checkout. Esse comportamento existe apenas no pytest, sem alterar a API em produção.
+
+Ao atualizar o baseline, observe o **base**, não o head. Por exemplo, usando o Python do ambiente do base e o checker do head:
+
+```sh
+/caminho/base-venv/bin/python /caminho/head/scripts/check_regression_baseline.py collect \
+  --tests-root /caminho/base/tests --offline-geonames --output /tmp/base.json
+```
+
+Use o SHA completo do base e os node IDs dessa observação. No base `c29c52fb`, a observação offline tem 86 falhas e 3 erros de coleta (`test_settings.py`, `test_report.py`, `test_utc.py`); a lista de falhas anterior permanece igual. O antigo erro de coleta em `test_fastapi_deployment.py` sai porque o ambiente do base agora instala `httpx`. Sem o plugin no processo do base, um head offline não basta: limites do GeoNames ainda podem impedir a igualdade exata com o baseline. Excluir apenas testes marcados no head tampouco altera a coleta dos testes antigos do base.
+
 Em `push` e `workflow_call`, o gate valida o SHA do baseline, sua existência e ancestralidade em relação ao commit testado, e compara o head com os mesmos node IDs e classificações. A publicação passa explicitamente o SHA resolvido da tag ao workflow reutilizável, portanto não depende de contexto de pull request e não pula o gate.
 
 ## Publicação e rollback

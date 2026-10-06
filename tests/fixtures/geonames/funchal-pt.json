@@ -1,0 +1,24 @@
+{
+  "query": {
+    "q": "Funchal",
+    "country": "PT"
+  },
+  "search": {
+    "totalResultsCount": 32,
+    "geonames": [
+      {
+        "lng": "-16.92547",
+        "geonameId": 2267827,
+        "countryCode": "PT",
+        "name": "Funchal",
+        "toponymName": "Funchal",
+        "lat": "32.66568",
+        "fcl": "P",
+        "fcode": "PPLA"
+      }
+    ]
+  },
+  "timezone": {
+    "timezoneId": "Atlantic/Madeira"
+  }
+}

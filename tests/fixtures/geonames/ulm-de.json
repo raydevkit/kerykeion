@@ -1,0 +1,24 @@
+{
+  "query": {
+    "q": "Ulm",
+    "country": "DE"
+  },
+  "search": {
+    "totalResultsCount": 158,
+    "geonames": [
+      {
+        "lng": "9.99155",
+        "geonameId": 2820256,
+        "countryCode": "DE",
+        "name": "Ulm",
+        "toponymName": "Ulm",
+        "lat": "48.39841",
+        "fcl": "P",
+        "fcode": "PPLA3"
+      }
+    ]
+  },
+  "timezone": {
+    "timezoneId": "Europe/Berlin"
+  }
+}

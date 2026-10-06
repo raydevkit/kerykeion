@@ -1,0 +1,24 @@
+{
+  "query": {
+    "q": "Owensboro",
+    "country": "US"
+  },
+  "search": {
+    "totalResultsCount": 115,
+    "geonames": [
+      {
+        "lng": "-87.11333",
+        "geonameId": 4303436,
+        "countryCode": "US",
+        "name": "Owensboro",
+        "toponymName": "Owensboro",
+        "lat": "37.77422",
+        "fcl": "P",
+        "fcode": "PPLA2"
+      }
+    ]
+  },
+  "timezone": {
+    "timezoneId": "America/Chicago"
+  }
+}

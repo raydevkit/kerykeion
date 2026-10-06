@@ -1,0 +1,24 @@
+{
+  "query": {
+    "q": "Allahabad",
+    "country": "IN"
+  },
+  "search": {
+    "totalResultsCount": 3817,
+    "geonames": [
+      {
+        "lng": "81.84322",
+        "geonameId": 1278994,
+        "countryCode": "IN",
+        "name": "Prayagraj",
+        "toponymName": "Prayagraj",
+        "lat": "25.44478",
+        "fcl": "P",
+        "fcode": "PPL"
+      }
+    ]
+  },
+  "timezone": {
+    "timezoneId": "Asia/Kolkata"
+  }
+}

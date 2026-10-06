@@ -1,0 +1,24 @@
+{
+  "query": {
+    "q": "Malaga",
+    "country": "ES"
+  },
+  "search": {
+    "totalResultsCount": 319,
+    "geonames": [
+      {
+        "lng": "-4.42034",
+        "geonameId": 2514256,
+        "countryCode": "ES",
+        "name": "Málaga",
+        "toponymName": "Málaga",
+        "lat": "36.72016",
+        "fcl": "P",
+        "fcode": "PPLA2"
+      }
+    ]
+  },
+  "timezone": {
+    "timezoneId": "Europe/Madrid"
+  }
+}

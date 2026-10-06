@@ -1,0 +1,24 @@
+{
+  "query": {
+    "q": "Rome",
+    "country": "IT"
+  },
+  "search": {
+    "totalResultsCount": 1105,
+    "geonames": [
+      {
+        "lng": "12.51133",
+        "geonameId": 3169070,
+        "countryCode": "IT",
+        "name": "Rome",
+        "toponymName": "Rome",
+        "lat": "41.89193",
+        "fcl": "P",
+        "fcode": "PPLC"
+      }
+    ]
+  },
+  "timezone": {
+    "timezoneId": "Europe/Rome"
+  }
+}

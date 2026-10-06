@@ -41,10 +41,11 @@ jobs:
         run: >-
           poetry run ruff check app scripts/check_regression_baseline.py
           tests/test_fastapi_deployment.py tests/test_dockerfile_packaging.py tests/test_regression_checker.py
+          tests/conftest.py tests/test_offline_geonames.py
       - name: Test FastAPI and packaging
         run: poetry run pytest -o addopts='' tests/test_fastapi_deployment.py tests/test_dockerfile_packaging.py
-      - name: Test regression checker
-        run: poetry run pytest -o addopts='' tests/test_regression_checker.py
+      - name: Test regression checker and offline GeoNames
+        run: poetry run pytest -o addopts='' tests/test_regression_checker.py tests/test_offline_geonames.py
       - name: Test compatible existing suite
         run: >-
           poetry run pytest -o addopts=''

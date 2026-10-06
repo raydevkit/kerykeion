@@ -1,0 +1,24 @@
+{
+  "query": {
+    "q": "Paris",
+    "country": "FR"
+  },
+  "search": {
+    "totalResultsCount": 638,
+    "geonames": [
+      {
+        "lng": "2.3488",
+        "geonameId": 2988507,
+        "countryCode": "FR",
+        "name": "Paris",
+        "toponymName": "Paris",
+        "lat": "48.85341",
+        "fcl": "P",
+        "fcode": "PPLC"
+      }
+    ]
+  },
+  "timezone": {
+    "timezoneId": "Europe/Paris"
+  }
+}

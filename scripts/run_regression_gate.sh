@@ -94,14 +94,14 @@ import tomllib
 with open(sys.argv[1], "rb") as lock_file:
     packages = tomllib.load(lock_file)["package"]
 versions = {package["name"]: package["version"] for package in packages}
-for name in ("pytest", "pytest-asyncio"):
+for name in ("pytest", "pytest-asyncio", "httpx"):
     if name not in versions:
         raise SystemExit(f"{name} is missing from the base lock")
     print(f"{name}=={versions[name]}")
 PY
 )
 "$base_venv/bin/pip" install --disable-pip-version-check "${locked_test_tools[@]}"
-"$base_venv/bin/python" "$checker" collect --tests-root "$base_worktree/tests" --output "$base_results"
+"$base_venv/bin/python" "$checker" collect --tests-root "$base_worktree/tests" --offline-geonames --output "$base_results"
 poetry -C "$repository" run python "$checker" verify-pr \
     --baseline "$baseline" \
     --expected-base-sha "$expected_base_sha" \
