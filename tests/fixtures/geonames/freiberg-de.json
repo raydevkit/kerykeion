@@ -1,0 +1,24 @@
+{
+  "query": {
+    "q": "Freiberg",
+    "country": "DE"
+  },
+  "search": {
+    "totalResultsCount": 658,
+    "geonames": [
+      {
+        "lng": "13.33881",
+        "geonameId": 2925192,
+        "countryCode": "DE",
+        "name": "Freiberg",
+        "toponymName": "Freiberg",
+        "lat": "50.91089",
+        "fcl": "P",
+        "fcode": "PPLA3"
+      }
+    ]
+  },
+  "timezone": {
+    "timezoneId": "Europe/Berlin"
+  }
+}

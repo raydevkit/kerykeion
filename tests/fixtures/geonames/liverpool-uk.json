@@ -1,0 +1,24 @@
+{
+  "query": {
+    "q": "Liverpool",
+    "country": "UK"
+  },
+  "search": {
+    "totalResultsCount": 56,
+    "geonames": [
+      {
+        "lng": "-2.97794",
+        "geonameId": 2644210,
+        "countryCode": "GB",
+        "name": "Liverpool",
+        "toponymName": "Liverpool",
+        "lat": "53.41058",
+        "fcl": "P",
+        "fcode": "PPLA2"
+      }
+    ]
+  },
+  "timezone": {
+    "timezoneId": "Europe/London"
+  }
+}

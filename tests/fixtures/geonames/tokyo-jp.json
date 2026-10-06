@@ -1,0 +1,24 @@
+{
+  "query": {
+    "q": "Tokyo",
+    "country": "JP"
+  },
+  "search": {
+    "totalResultsCount": 1387,
+    "geonames": [
+      {
+        "lng": "139.69171",
+        "geonameId": 1850147,
+        "countryCode": "JP",
+        "name": "Tokyo",
+        "toponymName": "Tokyo",
+        "lat": "35.6895",
+        "fcl": "P",
+        "fcode": "PPLC"
+      }
+    ]
+  },
+  "timezone": {
+    "timezoneId": "Asia/Tokyo"
+  }
+}

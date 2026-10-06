@@ -1,0 +1,24 @@
+{
+  "query": {
+    "q": "Sangiano",
+    "country": "IT"
+  },
+  "search": {
+    "totalResultsCount": 2,
+    "geonames": [
+      {
+        "lng": "8.63333",
+        "geonameId": 6535112,
+        "countryCode": "IT",
+        "name": "Sangiano",
+        "toponymName": "Sangiano",
+        "lat": "45.87508",
+        "fcl": "P",
+        "fcode": "PPLA3"
+      }
+    ]
+  },
+  "timezone": {
+    "timezoneId": "Europe/Rome"
+  }
+}

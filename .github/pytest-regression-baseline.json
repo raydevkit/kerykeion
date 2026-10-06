@@ -1,5 +1,5 @@
 {
-  "base_sha": "9efe402986f12824350ad81bbeeafcbb31318e99",
+  "base_sha": "c29c52fbefade62790795f080f4f56f597a2907a",
   "failed": [
     "tests/aspects/test_natal_aspects.py::TestNatalAspects::test_relevant_aspects",
     "tests/aspects/test_natal_aspects.py::TestNatalAspects::test_relevant_aspects_length",
@@ -90,7 +90,6 @@
   ],
   "errors": [
     "tests/settings/test_settings.py",
-    "tests/test_fastapi_deployment.py",
     "tests/test_report.py",
     "tests/test_utc.py"
   ]

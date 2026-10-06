@@ -1,0 +1,24 @@
+{
+  "query": {
+    "q": "Istanbul",
+    "country": "TR"
+  },
+  "search": {
+    "totalResultsCount": 592,
+    "geonames": [
+      {
+        "lng": "28.94966",
+        "geonameId": 745044,
+        "countryCode": "TR",
+        "name": "Istanbul",
+        "toponymName": "Istanbul",
+        "lat": "41.01384",
+        "fcl": "P",
+        "fcode": "PPLA"
+      }
+    ]
+  },
+  "timezone": {
+    "timezoneId": "Europe/Istanbul"
+  }
+}

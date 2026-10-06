@@ -1,0 +1,24 @@
+{
+  "query": {
+    "q": "London",
+    "country": "GB"
+  },
+  "search": {
+    "totalResultsCount": 1218,
+    "geonames": [
+      {
+        "lng": "-0.12574",
+        "geonameId": 2643743,
+        "countryCode": "GB",
+        "name": "London",
+        "toponymName": "London",
+        "lat": "51.50853",
+        "fcl": "P",
+        "fcode": "PPLC"
+      }
+    ]
+  },
+  "timezone": {
+    "timezoneId": "Europe/London"
+  }
+}
