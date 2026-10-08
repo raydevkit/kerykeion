@@ -3880,7 +3880,7 @@ class ChartDrawer:  # type: ignore[no-redef]
             return f"{truncated_name} - {transit_label} {date_str}"
 
         elif self.chart_type == "Synastry":
-            synastry_label = self._translate("synastry_chart", "Synastry")
+            synastry_label = self._translate("Synastry", "Synastry")
             and_word = self._translate("and_word", "&")
             name1 = self._truncate_name(self.first_obj.name)
             name2 = self._truncate_name(self.second_obj.name)  # type: ignore
