@@ -7,6 +7,9 @@ Helper functions for astrological calculations and data processing.
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta, timezone as datetime_timezone
 import math
+import swisseph as swe
+from kerykeion.moon_phase_details.utils import configure_ephemeris_path
+from kerykeion.utilities import datetime_to_julian, julian_to_datetime
 from kerykeion import AstrologicalSubject
 from kerykeion.astrological_subject_factory import AstrologicalSubjectFactory
 from kerykeion.moon_phase_details.factory import (
@@ -303,6 +306,30 @@ def _compute_next_phase_from_windows(phase_windows: Dict[str, Any]) -> tuple:
     return phase_names[best_key], best_days
 
 
+def _refine_phase_dt(estimate: datetime, target: float) -> datetime:
+    """
+    Exact moment the Sun-Moon elongation reaches `target`, from a mean-motion
+    estimate. The Moon's speed varies by about 20%, so the mean estimate can be
+    off by most of a day; Newton steps on Swiss Ephemeris positions converge to
+    the second in a few iterations. Falls back to the estimate on failure.
+    """
+    try:
+        iflag = configure_ephemeris_path() | swe.FLG_SPEED
+        jd = datetime_to_julian(estimate.astimezone(datetime_timezone.utc))
+        for _ in range(8):
+            sun = swe.calc_ut(jd, swe.SUN, iflag)[0]
+            moon = swe.calc_ut(jd, swe.MOON, iflag)[0]
+            diff = ((moon[0] - sun[0] - target + 180.0) % 360.0) - 180.0
+            step = diff / (moon[3] - sun[3])
+            jd -= step
+            if abs(step) < 1.0 / 86400.0:
+                break
+        return julian_to_datetime(jd).replace(tzinfo=datetime_timezone.utc)
+    except Exception:  # pragma: no cover - ephemeris failure keeps the estimate
+        logger.warning("Phase refinement failed; using the mean estimate", exc_info=True)
+        return estimate
+
+
 def _compute_phase_windows_from_elongation(now: datetime, degrees_between: float) -> Dict[str, Any]:
     if now.tzinfo is None:
         base_dt = now.replace(tzinfo=datetime_timezone.utc)
@@ -326,8 +353,12 @@ def _compute_phase_windows_from_elongation(now: datetime, degrees_between: float
         if days_until == 0:
             days_until = SYNODIC_MONTH_DAYS
 
-        last_dt = base_dt - timedelta(days=days_since)
-        next_dt = base_dt + timedelta(days=days_until)
+        last_dt = _refine_phase_dt(base_dt - timedelta(days=days_since), target)
+        if last_dt >= base_dt:
+            last_dt = _refine_phase_dt(last_dt - timedelta(days=SYNODIC_MONTH_DAYS), target)
+        next_dt = _refine_phase_dt(base_dt + timedelta(days=days_until), target)
+        if next_dt <= base_dt:
+            next_dt = _refine_phase_dt(next_dt + timedelta(days=SYNODIC_MONTH_DAYS), target)
         windows[key] = {
             'last': _serialize_phase_event(last_dt, base_dt, is_past=True),
             'next': _serialize_phase_event(next_dt, base_dt, is_past=False),
