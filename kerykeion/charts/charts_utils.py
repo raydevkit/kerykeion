@@ -744,6 +744,13 @@ def convert_decimal_to_degree_string(dec: float, format_type: Literal["1", "2", 
     elif format_type == "2":
         return f"{degrees}°{minutes:02d}'"
     elif format_type == "3":
+        # Rounding can give 60 seconds: carry it so 24°02'59.7" reads 24°03'00", never 24°02'60".
+        if seconds == 60:
+            seconds = 0
+            minutes += 1
+        if minutes == 60:
+            minutes = 0
+            degrees += 1
         return f"{degrees}°{minutes:02d}'{seconds:02d}\""
 
 

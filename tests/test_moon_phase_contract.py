@@ -220,3 +220,27 @@ class TestMoonPhaseKnownDates:
 
 if __name__ == "__main__":
     pytest.main(["-vv", "--log-level=CRITICAL", "--log-cli-level=CRITICAL", __file__])
+
+
+class TestPhaseWindowPrecision:
+    """Phase windows come from the ephemeris, not the mean synodic month."""
+
+    def test_refines_mean_estimate_to_ephemeris_full_moon(self):
+        from datetime import timezone
+        from app.services.calculation_service import _refine_phase_dt
+
+        # Mean-motion estimate served before the fix; Swiss Ephemeris puts the
+        # October 2026 full moon (elongation 180.00°) at 26 Oct 04:11:47 UTC.
+        estimate = datetime(2026, 10, 25, 10, 20, 39, tzinfo=timezone.utc)
+        exact = datetime(2026, 10, 26, 4, 11, 47, tzinfo=timezone.utc)
+        assert abs((_refine_phase_dt(estimate, 180.0) - exact).total_seconds()) < 60
+
+    def test_windows_bracket_now(self):
+        from datetime import timezone
+        from app.services.calculation_service import _compute_phase_windows_from_elongation
+
+        now = datetime(2026, 10, 8, 19, 27, tzinfo=timezone.utc)
+        windows = _compute_phase_windows_from_elongation(now, 337.39)
+        full = windows["full_moon"]
+        assert full["last"]["timestamp"] < now.timestamp() < full["next"]["timestamp"]
+        assert full["next"]["datestamp"].startswith("Mon, 26 Oct 2026 04:1")
