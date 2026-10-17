@@ -19,6 +19,7 @@ from kerykeion.moon_phase_details.factory import (
 from app.schemas.common import SubjectInput
 from app.core.config import settings as app_settings
 from app.services.kerykeion_service import (
+    SWE_LOCK,
     create_astrological_subject,
     subject_to_dict,
     extract_planet_data,
@@ -79,19 +80,20 @@ def get_current_sky_positions(timezone: str = "UTC", longitude: float = 0.0, lat
         now = datetime.utcnow()
 
         # Create a subject for the current moment
-        current_subject = AstrologicalSubject(
-            name="Current Sky",
-            year=now.year,
-            month=now.month,
-            day=now.day,
-            hour=now.hour,
-            minute=now.minute,
-            lng=longitude,
-            lat=latitude,
-            tz_str=timezone,
-            city="Sky Position",
-            geonames_username=app_settings.GEONAMES_USERNAME
-        )
+        with SWE_LOCK:
+            current_subject = AstrologicalSubject(
+                name="Current Sky",
+                year=now.year,
+                month=now.month,
+                day=now.day,
+                hour=now.hour,
+                minute=now.minute,
+                lng=longitude,
+                lat=latitude,
+                tz_str=timezone,
+                city="Sky Position",
+                geonames_username=app_settings.GEONAMES_USERNAME
+            )
 
         # Extract planet data as individual planets (matching birth chart format)
         planets_data = {}
@@ -193,25 +195,26 @@ def get_detailed_moon_phase(timezone: str = "UTC", longitude: float = 0.0, latit
     try:
         now = datetime.utcnow()
 
-        subject = AstrologicalSubjectFactory.from_birth_data(
-            name="Moon Phase",
-            year=now.year,
-            month=now.month,
-            day=now.day,
-            hour=now.hour,
-            minute=now.minute,
-            lng=longitude,
-            lat=latitude,
-            tz_str=timezone,
-            city="Moon Phase",
-            online=False,
-            suppress_geonames_warning=True,
-        )
+        with SWE_LOCK:
+            subject = AstrologicalSubjectFactory.from_birth_data(
+                name="Moon Phase",
+                year=now.year,
+                month=now.month,
+                day=now.day,
+                hour=now.hour,
+                minute=now.minute,
+                lng=longitude,
+                lat=latitude,
+                tz_str=timezone,
+                city="Moon Phase",
+                online=False,
+                suppress_geonames_warning=True,
+            )
 
-        overview = MoonPhaseDetailsFactory.from_subject(
-            subject,
-            using_default_location=(longitude == 0.0 and latitude == 0.0),
-        )
+            overview = MoonPhaseDetailsFactory.from_subject(
+                subject,
+                using_default_location=(longitude == 0.0 and latitude == 0.0),
+            )
 
         moon_summary = overview.moon
         sun_info = overview.sun
@@ -314,16 +317,17 @@ def _refine_phase_dt(estimate: datetime, target: float) -> datetime:
     the second in a few iterations. Falls back to the estimate on failure.
     """
     try:
-        iflag = configure_ephemeris_path() | swe.FLG_SPEED
-        jd = datetime_to_julian(estimate.astimezone(datetime_timezone.utc))
-        for _ in range(8):
-            sun = swe.calc_ut(jd, swe.SUN, iflag)[0]
-            moon = swe.calc_ut(jd, swe.MOON, iflag)[0]
-            diff = ((moon[0] - sun[0] - target + 180.0) % 360.0) - 180.0
-            step = diff / (moon[3] - sun[3])
-            jd -= step
-            if abs(step) < 1.0 / 86400.0:
-                break
+        with SWE_LOCK:
+            iflag = configure_ephemeris_path() | swe.FLG_SPEED
+            jd = datetime_to_julian(estimate.astimezone(datetime_timezone.utc))
+            for _ in range(8):
+                sun = swe.calc_ut(jd, swe.SUN, iflag)[0]
+                moon = swe.calc_ut(jd, swe.MOON, iflag)[0]
+                diff = ((moon[0] - sun[0] - target + 180.0) % 360.0) - 180.0
+                step = diff / (moon[3] - sun[3])
+                jd -= step
+                if abs(step) < 1.0 / 86400.0:
+                    break
         return julian_to_datetime(jd).replace(tzinfo=datetime_timezone.utc)
     except Exception:  # pragma: no cover - ephemeris failure keeps the estimate
         logger.warning("Phase refinement failed; using the mean estimate", exc_info=True)
