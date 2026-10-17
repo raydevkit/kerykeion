@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/score", response_model=RelationshipScoreResponse)
-async def calculate_compatibility_score(
+def calculate_compatibility_score(
     request: SynastryRequest,
     api_key: str = Depends(verify_api_key),
 ):

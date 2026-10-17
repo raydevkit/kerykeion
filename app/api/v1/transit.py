@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/chart", response_model=TransitChartResponse)
-async def generate_transit_chart(
+def generate_transit_chart(
     request: TransitRequest,
     api_key: str = Depends(verify_api_key),
 ):
@@ -80,7 +80,7 @@ async def generate_transit_chart(
 
 
 @router.post("/data")
-async def get_transit_data(
+def get_transit_data(
     request: TransitRequest,
     api_key: str = Depends(verify_api_key),
 ):

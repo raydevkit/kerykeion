@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/chart", response_model=CompositeChartResponse)
-async def generate_composite_chart(
+def generate_composite_chart(
     request: CompositeRequest,
     api_key: str = Depends(verify_api_key),
 ):
@@ -82,7 +82,7 @@ async def generate_composite_chart(
 
 
 @router.post("/data")
-async def get_composite_data(
+def get_composite_data(
     request: CompositeRequest,
     api_key: str = Depends(verify_api_key),
 ):
