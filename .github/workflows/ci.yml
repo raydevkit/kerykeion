@@ -53,6 +53,7 @@ jobs:
           tests/test_moon_phase_contract.py
           tests/test_birth_chart_style.py
           tests/test_chart_config_style.py
+          tests/test_swe_thread_safety.py
       - name: Verify exact PR base and reject regressions
         if: github.event_name == 'pull_request'
         env:

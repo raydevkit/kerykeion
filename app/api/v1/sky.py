@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.get("/now", response_model=CurrentSkyResponse)
-async def get_current_sky(
+def get_current_sky(
     timezone: str = Query(default="UTC", description="Timezone string (e.g., 'America/New_York')"),
     longitude: float = Query(default=0.0, ge=-180, le=180, description="Longitude"),
     latitude: float = Query(default=0.0, ge=-90, le=90, description="Latitude"),
@@ -46,7 +46,7 @@ async def get_current_sky(
 
 
 @router.get("/moon-phase", response_model=MoonPhaseResponse)
-async def get_moon_phase(
+def get_moon_phase(
     timezone: str = Query(default="UTC", description="Timezone string (e.g., 'America/New_York')"),
     longitude: float = Query(default=0.0, ge=-180, le=180, description="Longitude"),
     latitude: float = Query(default=0.0, ge=-90, le=90, description="Latitude"),

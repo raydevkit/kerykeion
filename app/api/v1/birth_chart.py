@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/chart", response_model=BirthChartResponse)
-async def generate_birth_chart(
+def generate_birth_chart(
     request: BirthChartRequest,
     api_key: str = Depends(verify_api_key),
 ):
@@ -77,7 +77,7 @@ async def generate_birth_chart(
 
 
 @router.post("/data", response_model=BirthDataResponse)
-async def get_birth_data(
+def get_birth_data(
     request: BirthChartRequest,
     api_key: str = Depends(verify_api_key),
 ):

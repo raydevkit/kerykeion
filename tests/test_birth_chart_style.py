@@ -1,5 +1,3 @@
-import pytest
-
 from app.api.v1.birth_chart import generate_birth_chart
 from app.schemas.common import ChartConfig, SubjectInput
 from app.schemas.requests import BirthChartRequest
@@ -24,8 +22,7 @@ def make_request(style=None):
     )
 
 
-@pytest.mark.asyncio
-async def test_birth_chart_route_uses_modern_style_by_default(monkeypatch):
+def test_birth_chart_route_uses_modern_style_by_default(monkeypatch):
     captured = {}
 
     def fake_create_astrological_subject(*args, **kwargs):
@@ -45,13 +42,12 @@ async def test_birth_chart_route_uses_modern_style_by_default(monkeypatch):
     )
     monkeypatch.setattr("app.api.v1.birth_chart.subject_to_dict", lambda subject: {})
 
-    await generate_birth_chart(make_request(), api_key="test")
+    generate_birth_chart(make_request(), api_key="test")
 
     assert captured["style"] == "modern"
 
 
-@pytest.mark.asyncio
-async def test_birth_chart_route_passes_explicit_classic_style(monkeypatch):
+def test_birth_chart_route_passes_explicit_classic_style(monkeypatch):
     captured = {}
 
     def fake_create_astrological_subject(*args, **kwargs):
@@ -71,6 +67,6 @@ async def test_birth_chart_route_passes_explicit_classic_style(monkeypatch):
     )
     monkeypatch.setattr("app.api.v1.birth_chart.subject_to_dict", lambda subject: {})
 
-    await generate_birth_chart(make_request(style="classic"), api_key="test")
+    generate_birth_chart(make_request(style="classic"), api_key="test")
 
     assert captured["style"] == "classic"

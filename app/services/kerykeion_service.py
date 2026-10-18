@@ -11,13 +11,19 @@ with warnings.catch_warnings():
     warnings.simplefilter("ignore", DeprecationWarning)
     from kerykeion import AstrologicalSubject, SynastryAspects, CompositeSubjectFactory
 from kerykeion.aspects.aspects_factory import AspectsFactory
+from kerykeion.astrological_subject_factory import DEFAULT_GEONAMES_CACHE_EXPIRE_AFTER_DAYS, LocationData
 from kerykeion.schemas.kr_models import AstrologicalSubjectModel, CompositeSubjectModel
 from app.schemas.common import SubjectInput
 from app.core.config import settings as app_settings
 from app.utils.validators import normalize_house_system, normalize_zodiac_type
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
+
+# Swiss Ephemeris state (set_topo, set_sid_mode, close) is process-wide unless the build uses thread-local
+# storage, so subject math is serialised per worker while SVG rendering and HTTP stay in the threadpool.
+SWE_LOCK = threading.Lock()
 
 
 def create_astrological_subject(subject_input: SubjectInput, zodiac_type: str = "Tropic",
@@ -42,8 +48,19 @@ def create_astrological_subject(subject_input: SubjectInput, zodiac_type: str = 
     normalized_zodiac = normalize_zodiac_type(zodiac_type)
     normalized_house_system = normalize_house_system(house_system)
 
-    # Use offline mode with coordinates
-    if subject_input.longitude is not None and subject_input.latitude is not None and subject_input.timezone:
+    lng, lat, tz_str = subject_input.longitude, subject_input.latitude, subject_input.timezone
+    # Label-only in offline mode (lng/lat/tz provided) — without it the
+    # library defaults to "GB" and charts render e.g. "Rome, GB".
+    nation = subject_input.nation or "GB"
+    if lng is None or lat is None or not tz_str:
+        if not (subject_input.city and subject_input.nation):
+            raise ValueError("Must provide either (longitude, latitude, timezone) or (city, nation)")
+        # Resolve outside SWE_LOCK: the GeoNames call has no timeout and must not stall other charts.
+        location = LocationData(city=subject_input.city, nation=subject_input.nation)
+        location.fetch_from_geonames(app_settings.GEONAMES_USERNAME, DEFAULT_GEONAMES_CACHE_EXPIRE_AFTER_DAYS)
+        lng, lat, tz_str, nation = location.lng, location.lat, location.tz_str, location.nation
+
+    with SWE_LOCK:
         return AstrologicalSubject(
             name=subject_input.name,
             year=subject_input.year,
@@ -51,36 +68,16 @@ def create_astrological_subject(subject_input: SubjectInput, zodiac_type: str = 
             day=subject_input.day,
             hour=subject_input.hour,
             minute=subject_input.minute,
-            lng=subject_input.longitude,
-            lat=subject_input.latitude,
-            tz_str=subject_input.timezone,
+            lng=lng,
+            lat=lat,
+            tz_str=tz_str,
             city=subject_input.city or "Unknown",
-            # Label-only in offline mode (lng/lat/tz provided) — without it the
-            # library defaults to "GB" and charts render e.g. "Rome, GB".
-            nation=subject_input.nation or "GB",
+            nation=nation,
             zodiac_type=normalized_zodiac,
             houses_system_identifier=normalized_house_system,
             sidereal_mode=sidereal_mode,
             geonames_username=app_settings.GEONAMES_USERNAME,
         )
-    # Fallback to city/nation lookup (requires GeoNames API)
-    elif subject_input.city and subject_input.nation:
-        return AstrologicalSubject(
-            name=subject_input.name,
-            year=subject_input.year,
-            month=subject_input.month,
-            day=subject_input.day,
-            hour=subject_input.hour,
-            minute=subject_input.minute,
-            city=subject_input.city,
-            nation=subject_input.nation,
-            zodiac_type=normalized_zodiac,
-            houses_system_identifier=normalized_house_system,
-            sidereal_mode=sidereal_mode,
-            geonames_username=app_settings.GEONAMES_USERNAME,
-        )
-    else:
-        raise ValueError("Must provide either (longitude, latitude, timezone) or (city, nation)")
 
 
 def extract_planet_data(subject: AstrologicalSubject) -> List[Dict[str, Any]]:

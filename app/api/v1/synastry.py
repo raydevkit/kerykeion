@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/chart", response_model=SynastryChartResponse)
-async def generate_synastry_chart(
+def generate_synastry_chart(
     request: SynastryRequest,
     api_key: str = Depends(verify_api_key),
 ):
@@ -88,7 +88,7 @@ async def generate_synastry_chart(
 
 
 @router.post("/data")
-async def get_synastry_data(
+def get_synastry_data(
     request: SynastryRequest,
     api_key: str = Depends(verify_api_key),
 ):
