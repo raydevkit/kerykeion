@@ -101,13 +101,27 @@ def test_progressed_moment_reads_the_target_on_the_local_birth_calendar():
         progressed_moment(tokyo, date(1990, 5, 14))
 
 
-def test_sidereal_solar_return_is_refused():
+@pytest.mark.parametrize(
+    "path, extra",
+    [("/api/v1/return/solar", {"year": 2026}), ("/api/v1/progressions", {"target_date": "2026-11-07"})],
+)
+def test_sidereal_forecasts_are_refused(path, extra):
     response = client.post(
-        "/api/v1/return/solar",
-        json={"subject": SUBJECT, "year": 2026, "config": {"zodiac_type": "Sidereal", "sidereal_mode": "LAHIRI"}},
+        path,
+        json={"subject": SUBJECT, **extra, "config": {"zodiac_type": "Sidereal", "sidereal_mode": "LAHIRI"}},
         headers=HEADERS,
     )
     assert response.status_code == 400
+    assert "INVALID_INPUT" in response.text
+
+
+def test_progressions_for_a_late_evening_birth_accept_the_local_birth_date():
+    # 23:00 in New York on 15 May 1990 is already 16 May in UTC.
+    subject = {**SUBJECT, "year": 1990, "month": 5, "day": 15, "hour": 23, "minute": 0,
+               "city": "New York", "nation": "US", "longitude": -74.006, "latitude": 40.7128, "timezone": "America/New_York"}
+    response = client.post("/api/v1/progressions", json={"subject": subject, "target_date": "1990-05-15"}, headers=HEADERS)
+    assert response.status_code == 200
+    assert response.json()["data"]["progressed_moment_utc"].startswith("1990-05-16T03:00")
 
 
 def test_progressions_return_progressed_positions_aspects_and_a_bi_wheel():

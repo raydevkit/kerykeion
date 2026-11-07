@@ -6,6 +6,7 @@ Solar returns (PlanetaryReturnFactory) and secondary progressions (a day after b
 
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, Optional
+from zoneinfo import ZoneInfo
 
 from kerykeion import AstrologicalSubject
 from kerykeion.astrological_subject_factory import AstrologicalSubjectFactory
@@ -25,6 +26,12 @@ def _drawer_svg(chart_data, theme: str, language: str, style: str, title: Option
     return drawer.generate_svg_string()
 
 
+def _require_tropical(natal_model) -> None:
+    # PlanetaryReturnFactory searches with swe.solcross_ut, which is tropical only; progressions follow for consistency.
+    if natal_model.zodiac_type != "Tropical":
+        raise ValueError("forecast charts support the Tropical zodiac only")
+
+
 def solar_return(
     natal: AstrologicalSubject,
     year: int,
@@ -35,9 +42,7 @@ def solar_return(
 ) -> Dict[str, Any]:
     """The Sun's return to its natal longitude around the birthday in `year`, cast for `location` (default: birth place)."""
     natal_model = natal.model()
-    if natal_model.zodiac_type != "Tropical":
-        # PlanetaryReturnFactory searches with swe.solcross_ut, which is tropical only.
-        raise ValueError("solar returns support the Tropical zodiac only")
+    _require_tropical(natal_model)
     loc = location or ReturnLocation(
         longitude=natal_model.lng,
         latitude=natal_model.lat,
@@ -80,7 +85,7 @@ def progressed_moment(natal_local: datetime, target: date) -> datetime:
 
     `natal_local` is the timezone-aware local birth moment; the result is in UTC.
     """
-    target_local = datetime.combine(target, natal_local.timetz())
+    target_local = datetime.combine(target, natal_local.time(), tzinfo=natal_local.tzinfo)
     if target_local < natal_local:
         raise ValueError("target_date must be on or after the birth date")
     years = (target_local - natal_local).total_seconds() / 86400 / TROPICAL_YEAR_DAYS
@@ -96,7 +101,9 @@ def secondary_progressions(
 ) -> Dict[str, Any]:
     """Secondary progressions for `target`; the progressed chart is cast at the birth place (angles by real time)."""
     natal_model = natal.model()
-    moment = progressed_moment(datetime.fromisoformat(natal_model.iso_formatted_local_datetime), target)
+    _require_tropical(natal_model)
+    natal_local = datetime.fromisoformat(natal_model.iso_formatted_utc_datetime).astimezone(ZoneInfo(natal_model.tz_str))
+    moment = progressed_moment(natal_local, target)
     with SWE_LOCK:
         progressed = AstrologicalSubjectFactory.from_iso_utc_time(
             name=f"{natal_model.name} Progressed",
