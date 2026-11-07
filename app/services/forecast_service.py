@@ -35,6 +35,9 @@ def solar_return(
 ) -> Dict[str, Any]:
     """The Sun's return to its natal longitude around the birthday in `year`, cast for `location` (default: birth place)."""
     natal_model = natal.model()
+    if natal_model.zodiac_type != "Tropical":
+        # PlanetaryReturnFactory searches with swe.solcross_ut, which is tropical only.
+        raise ValueError("solar returns support the Tropical zodiac only")
     loc = location or ReturnLocation(
         longitude=natal_model.lng,
         latitude=natal_model.lat,
@@ -72,13 +75,16 @@ def solar_return(
     }
 
 
-def progressed_moment(natal_utc: datetime, target: date) -> datetime:
-    """Birth moment plus one day per tropical year lived up to `target` at the birth's clock time (UTC)."""
-    target_utc = datetime.combine(target, natal_utc.timetz())
-    if target_utc < natal_utc:
+def progressed_moment(natal_local: datetime, target: date) -> datetime:
+    """Birth moment plus one day per tropical year lived up to `target`, both read on the birth's local calendar.
+
+    `natal_local` is the timezone-aware local birth moment; the result is in UTC.
+    """
+    target_local = datetime.combine(target, natal_local.timetz())
+    if target_local < natal_local:
         raise ValueError("target_date must be on or after the birth date")
-    years = (target_utc - natal_utc).total_seconds() / 86400 / TROPICAL_YEAR_DAYS
-    return natal_utc + timedelta(days=years)
+    years = (target_local - natal_local).total_seconds() / 86400 / TROPICAL_YEAR_DAYS
+    return (natal_local + timedelta(days=years)).astimezone(timezone.utc)
 
 
 def secondary_progressions(
@@ -90,7 +96,7 @@ def secondary_progressions(
 ) -> Dict[str, Any]:
     """Secondary progressions for `target`; the progressed chart is cast at the birth place (angles by real time)."""
     natal_model = natal.model()
-    moment = progressed_moment(datetime.fromisoformat(natal_model.iso_formatted_utc_datetime), target)
+    moment = progressed_moment(datetime.fromisoformat(natal_model.iso_formatted_local_datetime), target)
     with SWE_LOCK:
         progressed = AstrologicalSubjectFactory.from_iso_utc_time(
             name=f"{natal_model.name} Progressed",

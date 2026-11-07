@@ -91,6 +91,25 @@ def test_progressed_moment_adds_one_day_per_year_lived():
         progressed_moment(birth, date(1990, 5, 14))
 
 
+def test_progressed_moment_reads_the_target_on_the_local_birth_calendar():
+    # 23:00 in New York on May 15 is May 16 in UTC: the birth date itself must still be accepted.
+    new_york = datetime(1990, 5, 15, 23, 0, tzinfo=timezone(timedelta(hours=-4)))
+    assert progressed_moment(new_york, date(1990, 5, 15)) == new_york.astimezone(timezone.utc)
+    # 03:00 in Tokyo on May 15 is May 14 in UTC: the day before birth is refused.
+    tokyo = datetime(1990, 5, 15, 3, 0, tzinfo=timezone(timedelta(hours=9)))
+    with pytest.raises(ValueError):
+        progressed_moment(tokyo, date(1990, 5, 14))
+
+
+def test_sidereal_solar_return_is_refused():
+    response = client.post(
+        "/api/v1/return/solar",
+        json={"subject": SUBJECT, "year": 2026, "config": {"zodiac_type": "Sidereal", "sidereal_mode": "LAHIRI"}},
+        headers=HEADERS,
+    )
+    assert response.status_code == 400
+
+
 def test_progressions_return_progressed_positions_aspects_and_a_bi_wheel():
     response = client.post(
         "/api/v1/progressions", json={"subject": SUBJECT, "target_date": "2026-11-07"}, headers=HEADERS
