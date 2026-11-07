@@ -5,6 +5,7 @@ Wrapper functions for the Kerykeion astrology library.
 Handles creation of AstrologicalSubject instances and data extraction.
 """
 
+from datetime import datetime
 from typing import Dict, Any, List, Optional, Union
 import warnings
 with warnings.catch_warnings():
@@ -286,12 +287,14 @@ def subject_to_dict(subject: AstrologicalSubject) -> Dict[str, Any]:
 
     # Add date/location info only for regular subjects (not composite)
     if not is_composite:
+        # Return and progressed models carry only ISO datetimes, not the year/month/... fields.
+        when = subject if hasattr(subject, 'year') else datetime.fromisoformat(subject.iso_formatted_local_datetime)
         result['date'] = {
-            'year': subject.year,
-            'month': subject.month,
-            'day': subject.day,
-            'hour': subject.hour,
-            'minute': subject.minute,
+            'year': when.year,
+            'month': when.month,
+            'day': when.day,
+            'hour': when.hour,
+            'minute': when.minute,
         }
         result['location'] = {
             'city': subject.city,

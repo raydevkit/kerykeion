@@ -263,3 +263,37 @@ class HealthCheckResponse(BaseModel):
     status: str = Field(..., description="Service status")
     version: str = Field(..., description="API version")
     environment: str = Field(..., description="Current environment")
+
+
+class SolarReturnDataResponse(BaseModel):
+    """Solar return data"""
+
+    return_moment_utc: str = Field(..., description="Exact return moment, ISO 8601 UTC")
+    return_moment_local: str = Field(..., description="Exact return moment in the return location's timezone")
+    natal_chart: Dict[str, Any]
+    return_chart: Dict[str, Any] = Field(..., description="The return chart, shaped like /birth/chart data")
+    aspects_to_natal: List[Dict[str, Any]] = Field(..., description="Return planets to natal planets")
+
+
+class SolarReturnResponse(BaseModel):
+    """Response schema for a solar return chart"""
+
+    svg: Optional[str] = Field(None, description="Solar return chart SVG")
+    data: SolarReturnDataResponse
+
+
+class ProgressionsDataResponse(BaseModel):
+    """Secondary progressions data"""
+
+    target_date: str
+    progressed_moment_utc: str = Field(..., description="Ephemeris moment the progressed chart is cast for")
+    natal_chart: Dict[str, Any]
+    progressed_chart: Dict[str, Any] = Field(..., description="Progressed positions, shaped like /birth/chart data")
+    aspects_to_natal: List[Dict[str, Any]] = Field(..., description="Progressed planets to natal planets")
+
+
+class ProgressionsResponse(BaseModel):
+    """Response schema for secondary progressions (bi-wheel SVG: natal inside, progressed outside)"""
+
+    svg: Optional[str] = Field(None, description="Bi-wheel SVG")
+    data: ProgressionsDataResponse

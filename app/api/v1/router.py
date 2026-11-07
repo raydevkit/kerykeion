@@ -6,7 +6,7 @@ Aggregates all v1 endpoint routers.
 
 from fastapi import APIRouter
 
-from app.api.v1 import birth_chart, synastry, transit, composite, relationship, sky
+from app.api.v1 import birth_chart, synastry, transit, composite, relationship, sky, forecast
 
 # Create main API router
 api_router = APIRouter()
@@ -18,3 +18,4 @@ api_router.include_router(transit.router, prefix="/transit", tags=["Transits"])
 api_router.include_router(composite.router, prefix="/composite", tags=["Composite"])
 api_router.include_router(relationship.router, prefix="/relationship", tags=["Relationship"])
 api_router.include_router(sky.router, prefix="/sky", tags=["Current Sky"])
+api_router.include_router(forecast.router, tags=["Forecasting"])
