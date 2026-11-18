@@ -10,3 +10,11 @@ On every feature or PR, fix what you find without asking, even when it is out of
 - Otherwise: open a small follow-up PR that goes through the same review, and name it in your report.
 - Ask Ray first only for production database changes, spend, anything that cannot be undone, or a product decision.
 - Reviewers list such findings as fixes to make, never as "out of scope".
+
+## Who writes the code
+
+omp (GLM 5.3 max; GLM 5.3 Flash for mechanical work) and Codex (`gpt-6.2-sol`, medium reasoning) write the code from
+Claude's plan or brief; Claude plans, then reviews: `ponytail-review` on every PR, plus `impeccable` when the PR changes
+UI, and an adversarial review in the environment with Codex CLI and GLM 5.3 max (Ray, 2026-11-18). If Codex cannot run,
+GLM writes it alone; with neither, Claude writes it and says so in the PR. Always move GLM, Codex and kie.ai to the newest
+model available to us.
